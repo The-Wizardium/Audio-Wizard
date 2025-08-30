@@ -1,0 +1,105 @@
+/////////////////////////////////////////////////////////////////////////////////
+// * FB2K Component: COM Automation and ActiveX Interface                    * //
+// * Description:    MyCOM Type Library File                                 * //
+// * Author:         TT                                                      * //
+// * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
+// * Version:        0.1                                                     * //
+// * Dev. started:   12-12-2024                                              * //
+// * Last change:    22-12-2024                                              * //
+/////////////////////////////////////////////////////////////////////////////////
+
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+
+[
+	object,
+	uuid(B8142E5D-CE24-4243-9106-2FC77B1344FA), // UUID for MyCOMAPI
+	dual,
+	nonextensible,
+	pointer_default(unique)
+]
+interface MyCOMAPI : IDispatch {
+	// * PUBLIC API - REAL-TIME METRIC PROPERTIES * //
+	[propget, id(1)] HRESULT RawAudioData([out, retval] SAFEARRAY(float)* data); // Need to use SAFEARRAY(float) instead of SAFEARRAY(double) due to Spider Monkey Panel bug
+	[propget, id(2)] HRESULT MomentaryLUFS([out, retval] double* value);
+	[propget, id(3)] HRESULT ShortTermLUFS([out, retval] double* value);
+	[propget, id(4)] HRESULT RMS([out, retval] double* value);
+	[propget, id(5)] HRESULT LeftRMS([out, retval] double* value);
+	[propget, id(6)] HRESULT RightRMS([out, retval] double* value);
+	[propget, id(7)] HRESULT LeftSamplePeak([out, retval] double* value);
+	[propget, id(8)] HRESULT RightSamplePeak([out, retval] double* value);
+	[propget, id(9)] HRESULT TruePeak([out, retval] double* value);
+	[propget, id(10)] HRESULT PSR([out, retval] double* value);
+	[propget, id(11)] HRESULT PLR([out, retval] double* value);
+	[propget, id(12)] HRESULT CrestFactor([out, retval] double* value);
+	[propget, id(13)] HRESULT DynamicRange([out, retval] double* value);
+	[propget, id(14)] HRESULT PureDynamics([out, retval] double* value);
+	[propget, id(15)] HRESULT PhaseCorrelation([out, retval] double* value);
+	[propget, id(16)] HRESULT StereoWidth([out, retval] double* value);
+
+	// * PUBLIC API - REAL-TIME PEAKMETER PROPERTIES * //
+	[propget, id(17)] HRESULT PeakmeterOffset([out, retval] double* value);
+	[propput, id(17)] HRESULT PeakmeterOffset([in] LONG value);
+	[propget, id(18)] HRESULT PeakmeterAdjustedLeftRMS([out, retval] double* value);
+	[propget, id(19)] HRESULT PeakmeterAdjustedRightRMS([out, retval] double* value);
+	[propget, id(20)] HRESULT PeakmeterAdjustedLeftSamplePeak([out, retval] double* value);
+	[propget, id(21)] HRESULT PeakmeterAdjustedRightSamplePeak([out, retval] double* value);
+
+	// * PUBLIC API - WAVEFORM PROPERTIES * //
+	[propget, id(22)] HRESULT WaveformData([out, retval] SAFEARRAY(float)* data);
+	[propput, id(23)] HRESULT WaveformMetric([in] LONG metric);
+
+	// * PUBLIC API - FULL-TRACK ANALYSIS CALLBACKS * //
+	HRESULT SetFullTrackAnalysisCallback([in] VARIANT* callback);
+	HRESULT SetFullTrackWaveformCallback([in] VARIANT* callback);
+
+	// * PUBLIC API - FULL-TRACK METHODS * //
+	HRESULT StartWaveformAnalysis([in] LONG resolutionSec);
+	HRESULT StopWaveformAnalysis();
+	HRESULT StartFullTrackAnalysis([in] LONG chunkDurationMs);
+	HRESULT GetFullTrackAnalysis([out, retval] VARIANT_BOOL* pSuccess);
+	HRESULT GetFullTrackMetrics([out, retval] SAFEARRAY(float)* metrics);
+	HRESULT GetMomentaryLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetShortTermLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetIntegratedLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetRMSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetSamplePeakFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetTruePeakFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetPSRFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetPLRFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetCrestFactorFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetLoudnessRangeFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetDynamicRangeFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+	HRESULT GetPureDynamicsFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
+
+	// * PUBLIC API - FULL-TRACK ALBUM METHODS * //
+	HRESULT GetDynamicRangeAlbumFull([in] BSTR albumName, [out, retval] double* value);
+	HRESULT GetPureDynamicsAlbumFull([in] BSTR albumName, [out, retval] double* value);
+
+	// * PUBLIC API - REAL-TIME METHODS * //
+	HRESULT SetMonitoringRefreshRate([in] LONG refreshRateMs);
+	HRESULT StartRealTimeMonitoring([in] LONG refreshRateMs, [in] LONG chunkDurationMs);
+	HRESULT StopRealTimeMonitoring();
+	HRESULT StartRawAudioMonitoring([in] LONG refreshRateMs, [in] LONG chunkDurationMs);
+	HRESULT StopRawAudioMonitoring();
+	HRESULT StartPeakmeterMonitoring([in] LONG refreshRateMs, [in] LONG chunkDurationMs);
+	HRESULT StopPeakmeterMonitoring();
+};
+
+[
+	uuid(E7C1CADA-4E64-4AE0-B4D0-7D31FE8734BD), // UUID for MyCOMLIB
+	version(1.0),
+]
+library MyCOMLIB {
+	importlib("stdole32.tlb");
+	importlib("stdole2.tlb");
+
+	[
+		uuid(F8DD1B13-D097-45FC-A7A6-AB900FC8B019) // UUID for MyCOM coclass
+	]
+	coclass MyCOM {
+		[default] interface MyCOMAPI;
+	};
+};

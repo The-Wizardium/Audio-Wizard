@@ -1,0 +1,12 @@
+<svg width="400" height="40" viewBox="0 0 400 40" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ruby {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      font-size: 24px;
+      font-weight: bold;
+      fill: #b02a31;
+      text-anchor: middle;
+    }
+  </style>
+  <text x="200" y="30" class="ruby">The Ruby Spell Of Sonic Mastery</text>
+</svg>

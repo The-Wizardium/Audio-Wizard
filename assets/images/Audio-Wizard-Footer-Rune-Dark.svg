@@ -1,0 +1,20 @@
+<svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ruby {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      font-size: 56px;
+      font-weight: bold;
+      fill: #d6333c;
+      text-anchor: middle;
+    }
+    @keyframes pulse {
+      0%   { fill: #ffffff; }
+      50%  { fill: #d6333c; }
+      100% { fill: #ffffff; }
+    }
+    .pulse {
+      animation: pulse 4s ease-in-out infinite;
+    }
+  </style>
+  <text x="40" y="60" class="ruby pulse">ᚨ</text>
+</svg>

@@ -1,0 +1,21 @@
+<svg width="600" height="40" viewBox="0 0 600 40" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .ruby {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      font-size: 24px;
+      font-weight: bold;
+      font-style: italic;
+      fill: #d6333c;
+      text-anchor: middle;
+    }
+    @keyframes ruby-pulse {
+      0% { fill: #ffffff; }
+      50% { fill: #d6333c; }
+      100% { fill: #ffffff; }
+    }
+    .pulse {
+      animation: ruby-pulse 4s ease-in-out infinite;
+    }
+  </style>
+  <text x="300" y="30" class="ruby pulse">The Wizardium Chooses Only The Anointed</text>
+</svg>
