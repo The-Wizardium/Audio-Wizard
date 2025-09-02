@@ -33,10 +33,11 @@
 
 <!-- #region CHRONICLES OF THE RUBY SANCTUM -->
 
-*Sealed within the fiery **Rubynar Sanctum**, where sonic flames forge realms of unparalleled clarity,
-the *Audio Wizard* (foo_audio_wizard) is a radiant chapter of *The Wizardium*’s grimoire.
-Its runic seal, broken only by those who master the art of *Pure Dynamics*, grants audiophiles
-and engineers dominion over sound, conjuring tools of precision for analysis and monitoring.*
+*Sealed within the blazing **Rubynar Sanctum**, where sonic flames forge realms of unparalleled clarity,
+the **Audio Wizard** is a radiant chapter of **The Wizardium**’s grimoire.
+Its runic seal, the sacred **ᚨ Ansuz**, yields only to masters of sound, granting dominion over
+loudness, peaks, dynamics, and purity across 24 channels — all guided by the sacred standards
+of ITU-R BS.1770-5 and EBU TECH 3341–3343.*
 
 <br>
 
@@ -50,89 +51,121 @@ and engineers dominion over sound, conjuring tools of precision for analysis and
 
 ## Arcana Of The Ruby Spell
 
-- **Full-Track Analysis**:
-  - Analyzes multiple selected tracks with metrics including:
-    - Momentary LUFS
-    - Short Term LUFS
-    - Integrated LUFS
-    - Root Mean Square (RMS)
-    - Sample Peak (SP)
-    - True Peak (TP)
-    - Peak to Short-Term Loudness Ratio (PSR)
-    - Peak to Long-Term Loudness Ratio (PLR)
-    - Crest Factor (CF)
-    - Loudness Range (LRA)
-    - Dynamic Range (DR)
-    - Pure Dynamics (PD)
-
-     <br>
-
-  - Full-Track Analysis Dialog:
-
-    <details>
-      <summary>Show Full-Track Analysis Dialog Screenshot (click to expand)</summary>
-      <br>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/images/Audio-Wizard-Full-Track-Analysis-Dialog-Dark.jpg">
-          <img src="assets/images/Audio-Wizard-Full-Track-Analysis-Dialog-Light.jpg" alt="Audio Wizard Full-Track Analysis Dialog Screenshot">
-        </picture>
-      <br>
-    </details>
-
-    - View detailed metrics for analyzed tracks.
-    - Customize display settings.
-    - Sort results by clicking column headers.
-    - Display informative tooltips when hovering over column headers.
-    - Play tracks by double-clicking.
-    - Write or clear metadata tags.
-    - Export results to a text file.
-
-  - Generates waveform data for visualization.
+Audio Wizard offers following audio metrics for full-track analysis and real-time monitoring:
 
 <br>
 
-- **Real-Time Monitoring**:
-  - Monitors live audio with metrics such as:
-    - Momentary LUFS (M LUFS)
-    - Short-term LUFS (S LUFS)
-    - RMS (Left, Right, Overall)
-    - Sample Peaks (Left, Right)
-    - True Peak (TP)
-    - Peak to Short-Term Loudness Ratio (PSR)
-    - Peak to Long-Term Loudness Ratio (PLR)
-    - Crest Factor (CF)
-    - Dynamic Range (DR)
-    - Phase Correlation
-    - Stereo Width
-    - Pure Dynamics (PD)
-
-    <br>
-
-  - Real-Time Monitoring Dialog:
-
-    <details>
-      <summary>Show Real-Time Monitoring Dialog Screenshot (click to expand)</summary>
-      <br>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/images/Audio-Wizard-Real-Time-Monitoring-Dialog-Dark.jpg">
-          <img src="assets/images/Audio-Wizard-Real-Time-Monitoring-Dialog-Light.jpg" alt="Audio Wizard Real-Time Monitoring Dialog Screenshot">
-        </picture>
-      <br>
-    </details>
-
-    - View live audio metrics.
-    - Customize display settings.
-    - Enable meter bars with adjustable refresh rates.
-    - Display informative tooltips when hovering over metric values or meter bars.
-    - Toggle real-time logging.
+<table>
+  <tr>
+    <th colspan="2" align="left">Loudness</th>
+  </tr>
+  <tr>
+    <td>Momentary LUFS (M LUFS)</td>
+    <td>Audio loudness over 400ms.</td>
+  </tr>
+  <tr>
+    <td>Short-Term LUFS (S LUFS)</td>
+    <td>Audio loudness over 3 seconds.</td>
+  </tr>
+  <tr>
+    <td>Integrated LUFS (I LUFS)</td>
+    <td>Overall loudness of a track.</td>
+  </tr>
+  <tr>
+    <td>Root Mean Square (RMS)</td>
+    <td>Average power of the audio signal.</td>
+  </tr>
+  <tr>
+    <th colspan="2" width="9999" height="16"></th>
+  </tr>
+  <tr>
+    <th colspan="2" align="left">Peaks</th>
+  </tr>
+  <tr>
+    <td>Sample Peak (SP)</td>
+    <td>Maximum amplitude in a sample.</td>
+  </tr>
+  <tr>
+    <td>True Peak (TP)</td>
+    <td>Maximum amplitude, including inter-sample peaks.</td>
+  </tr>
+  <tr>
+    <th colspan="2" width="9999" height="16"></th>
+  </tr>
+  <tr>
+    <th colspan="2" align="left">Dynamics</th>
+  </tr>
+  <tr>
+    <td>Peak to Short-Term Loudness (PSR)</td>
+    <td>Ratio of peak amplitude to short-term loudness.</td>
+  </tr>
+  <tr>
+    <td>Peak to Long-Term Loudness (PLR)</td>
+    <td>Ratio of peak amplitude to integrated loudness.</td>
+  </tr>
+  <tr>
+    <td>Crest Factor (CF)</td>
+    <td>Ratio of peak amplitude to RMS.</td>
+  </tr>
+  <tr>
+    <td>Loudness Range (LRA)</td>
+    <td>Variation in loudness over time.</td>
+  </tr>
+  <tr>
+    <td>Dynamic Range (DR)</td>
+    <td>Difference between loudest and quietest parts.</td>
+  </tr>
+  <tr>
+    <td>Pure Dynamics (PD)</td>
+    <td>A psychoacoustic metric measuring perceived dynamics.</td>
+  </tr>
+</table>
 
 <br>
 
-- **Peakmeter Monitoring**: Drives a peakmeter using RMS and Sample Peak calculations.
+### Full-Track Analysis
 
-- **Raw Audio Access**: Retrieves PCM audio samples in real-time.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/images/Audio-Wizard-Full-Track-Analysis-Dialog-Dark.jpg">
+  <img src="assets/images/Audio-Wizard-Full-Track-Analysis-Dialog-Light.jpg" alt="Audio Wizard Full-Track Analysis Dialog Screenshot">
+</picture>
 
-- **API**: COM/ActiveX interface for scripting in foobar2000 via Spider Monkey Panel or JSplitter.
+<br>
+<br>
+
+Full-Track Analysis enables comprehensive evaluation of multiple selected tracks using the core audio metrics.
+Users can view detailed metrics for each analyzed track and customize display settings to suit their preferences.
+Results can be sorted by clicking column headers, and informative tooltips appear when hovering over these headers for additional context.
+Tracks can be played directly by double-clicking, and metadata tags can be written or cleared as needed.
+Analysis results can also be exported to a text or CSV file for further use.
+
+<br>
+
+### Real-Time Monitoring
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/images/Audio-Wizard-Real-Time-Monitoring-Dialog-Dark.jpg">
+  <img src="assets/images/Audio-Wizard-Real-Time-Monitoring-Dialog-Light.jpg" alt="Audio Wizard Real-Time Monitoring Dialog Screenshot">
+</picture>
+
+<br>
+<br>
+
+Real-Time Monitoring provides live tracking of audio metrics, allowing users to observe dynamic changes as they occur.
+Display settings can be customized to optimize the viewing experience, and meter bars with adjustable refresh rates can be enabled for visual feedback.
+Hovering over metric values or meter bars displays informative tooltips to provide deeper insights.
+Real-time logging can be toggled to capture data during monitoring sessions.
+
+<br>
+
+### Additional Features
+
+Audio Wizard includes several advanced capabilities.
+Peakmeter Monitoring drives a peakmeter using Root Mean Square and Sample Peak calculations for precise level visualization.
+Waveform Analysis generates detailed waveform data for visual representation of audio signals.
+Raw Audio Access allows retrieval of PCM audio samples in real-time, enabling direct signal manipulation.
+Additionally, a COM/ActiveX interface is provided for scripting within foobar2000,
+compatible with Spider Monkey Panel or JSplitter, offering extensibility for advanced users.
 
 <br>
 
@@ -155,7 +188,7 @@ and engineers dominion over sound, conjuring tools of precision for analysis and
       making it a standout feature of Audio Wizard.
       <br>
       <br>
-      <em>For a detailed explanation, see the <a href="assets/docs/PD.md">Pure Dynamics documentation</a>.</em>
+      <em>Unravel the algorithm that hears as mortals do in the <a href="assets/docs/PD.md">PD documentation</a>.</em>
       <br>
       <br>
     </td>
@@ -380,14 +413,14 @@ demonstrating compliance. Full logs for EBU Tech 3341 and ITU-R BS.2217-2 are in
 
 ## Enhance The Arcana
 
-For detailed information on the JavaScript API, including usage examples and a complete reference of properties and methods,<br>
+For detailed information on the JavaScript API, including usage examples and a complete reference of properties and methods,
 see the [API documentation](API.md).
 
 <br>
 
 ## Secret Wisdom
 
-Full-Track Analysis and Real-Time Monitoring Logs can be saved as `.txt` or `.csv` files.<br>
+Full-Track Analysis and Real-Time Monitoring Logs can be saved as `.txt` or `.csv` files.
 For optimal visual alignment when opening `.csv` files in LibreOffice or OpenOffice, use a monospace font such as Consolas.
 
 <br>

@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Analysis Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1                                                     * //
+// * Version:        0.1.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    22-12-2024                                              * //
+// * Last change:    01-09-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -823,9 +823,14 @@ void AudioWizardAnalysisFullTrack::ProcessDynamicsLoudnessAdaptation(FullTrackDa
 		stableDuration = (prevLufs != -INFINITY && std::abs(dynamics.correctedLoudness[i] - prevLufs) < 1.5)
 			? stableDuration + dynamics.blockDurationMs : 0.0;
 
-		dynamics.adaptedLoudness[i] = AWHAudioDynamics::ApplyPerceptualLoudnessAdaptation(
-			dynamics.correctedLoudness[i], stableDuration, prevLufs, tau, adaptStrength
-		);
+		if (prevLufs == -INFINITY) {
+			dynamics.adaptedLoudness[i] = dynamics.correctedLoudness[i];
+		}
+		else {
+			dynamics.adaptedLoudness[i] = AWHAudioDynamics::ApplyPerceptualLoudnessAdaptation(
+				dynamics.correctedLoudness[i], stableDuration, prevLufs, tau, adaptStrength
+			);
+		}
 
 		prevLufs = dynamics.correctedLoudness[i];
 	}
@@ -1217,7 +1222,7 @@ void AudioWizardAnalysisFullTrack::ProcessShortTermLUFS(FullTrackData& ftData) {
 		for (size_t i = 0; i < 30; ++i) { // Sum the oldest 30 blocks (each 100ms)
 			sum += ftData.shortTermBlockSums[i];
 		}
-		double mean = sum / (30 * ftData.stepSize); // Convert to mean power
+		double mean = sum / static_cast<double>(30 * ftData.stepSize); // Convert to mean power
 		double lufs = -0.691 + AWHAudio::PowerToDb(mean);
 		ftData.shortTermLUFS = std::max(ftData.shortTermLUFS, lufs);
 
@@ -1237,7 +1242,7 @@ void AudioWizardAnalysisFullTrack::ProcessIntegratedLUFS(FullTrackData& ftData) 
 		for (size_t i = 0; i < 4; ++i) { // Sum the oldest 4 blocks (each 100ms)
 			sum += ftData.integratedBlockSums[i];
 		}
-		double mean = sum / (4 * ftData.stepSize); // Convert to mean power
+		double mean = sum / static_cast<double>(4 * ftData.stepSize); // Convert to mean power
 		double lkfs = -0.691 + AWHAudio::PowerToDb(mean);
 		ftData.momentaryLUFS = std::max(ftData.momentaryLUFS, lkfs);
 
@@ -1547,7 +1552,7 @@ double AudioWizardAnalysisRealTime::GetRMS(const ChunkData& chkData) {
 		}
 	}
 
-	return AWHAudio::LinearToDb(std::sqrt(sumSquares / (chkData.frames * chkData.channels)));
+	return AWHAudio::LinearToDb(std::sqrt(sumSquares / static_cast<double>(chkData.frames * chkData.channels)));
 }
 
 double AudioWizardAnalysisRealTime::GetTruePeak(const ChunkData& chkData, RealTimeData& rtData) {
@@ -1579,7 +1584,7 @@ double AudioWizardAnalysisRealTime::GetCrestFactor(const ChunkData& chkData) {
 		}
 	}
 
-	double RMS = std::sqrt(sumSquares / (chkData.frames * chkData.channels));
+	double RMS = std::sqrt(sumSquares / static_cast<double>(chkData.frames * chkData.channels));
 	return (RMS == 0.0) ? 0.0 : AWHAudio::LinearToDb(peak / RMS);
 }
 
@@ -2203,7 +2208,7 @@ void AudioWizardAnalysisRealTime::ProcessIntegratedLUFS(const std::vector<double
 		rtData.gatedPowerSum = 0.0;
 		rtData.gatedBlockCount = 0;
 		if (count > 0) {
-			double mean_power = sum_power / (count * rtData.blockSize);
+			double mean_power = sum_power / static_cast<double>(count * rtData.blockSize);
 			double integrated_lufs = -0.691 + AWHAudio::PowerToDb(mean_power);
 			double relative_threshold = integrated_lufs + RELATIVE_GATE;
 
@@ -2219,7 +2224,7 @@ void AudioWizardAnalysisRealTime::ProcessIntegratedLUFS(const std::vector<double
 
 		// Update PLR
 		if (rtData.gatedBlockCount > 0) {
-			double mean_power = rtData.gatedPowerSum / (rtData.gatedBlockCount * rtData.blockSize);
+			double mean_power = rtData.gatedPowerSum / static_cast<double>(rtData.gatedBlockCount * rtData.blockSize);
 			rtData.integratedLUFS = -0.691 + AWHAudio::PowerToDb(mean_power);
 			rtData.PLR = AWHMath::RoundTo(GetPLR(rtData.truePeak, rtData.integratedLUFS), 1);
 		}
