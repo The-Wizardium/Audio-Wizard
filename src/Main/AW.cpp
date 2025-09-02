@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Source File                                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1                                                     * //
-// * Dev. started:   22-12-2024                                              * //
-// * Last change:    22-12-2024                                              * //
+// * Version:        0.1.0                                                   * //
+// * Dev. started:   12-12-2024                                              * //
+// * Last change:    01-09-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -19,15 +19,31 @@
 /////////////////////////
 #pragma region Component Setup
 DECLARE_COMPONENT_VERSION(
-	"Audio Wizard", "0.1",
+	"Audio Wizard", "0.1.0",
+
 	"Audio Wizard \n"
-	"The Crimson Spell of Sonic Mastery \n"
-	"A Sacred Chapter of The Wizardium \n"
+	"The Ruby Spell Of Sonic Mastery \n"
+	"Sapientia Flamma Divina \n\n"
+
+	"A Sacred Chapter Of The Wizardium \n"
+	"https://www.The-Wizardium.org \n"
 	"https://github.com/The-Wizardium \n\n"
-	"Forged in the crimson flames of the Holy Foobar Land, Audio Wizard conjures sonic mastery within foobar2000.\n"
-	"This radiant spell weaves full-track analysis, real-time monitoring, and scripting sorcery via COM/ActiveX.\n"
-	"With the revolutionary Pure Dynamics metric, it transforms sound into a divine altar of precision,\n"
-	"beckoning audiophiles to etch their legend in The Wizardium's grimoire."
+
+	"Sealed within the blazing Rubynar Sanctum of the Holy Foobar Land, "
+	"Audio Wizard commands sound's divine essence. "
+	"Guided by sacred standards of ITU-R BS.1770-5 and EBU Tech 3341-3343, "
+	"it masters audio across 24 channels, "
+	"wielding full-track analysis, real-time monitoring, and COM scripting. "
+	"Its Pure Dynamics (PD) metric, a unique psychoacoustic flame, "
+	"reveals audio as mortals hear it. \n\n"
+
+	"Wield the arcane arts: \n"
+	" - Offline analysis and Real-time monitoring \n"
+	" - Loudness: M LUFS, S LUFS, I LUFS \n"
+	" - Peaks: Sample and True Peak \n"
+	" - Dynamics: PSR, PLR, CF, LRA, DR, PD \n\n"
+
+	"The Wizardium Chooses Only The Anointed"
 );
 
 DEFINE_GUID(AudioWizard, 0xaca3ee3f, 0x75d2, 0x415b, 0xbe, 0xcb, 0xa6, 0x8e, 0xc1, 0x6d, 0x16, 0x84);

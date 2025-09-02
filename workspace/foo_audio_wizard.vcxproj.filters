@@ -134,6 +134,8 @@
     </Midl>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\src\Resource\MyCOM.tlb" />
+    <None Include="..\src\Resource\MyCOM.tlb">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

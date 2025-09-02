@@ -1,8 +1,11 @@
 # Audio Wizard - API Reference
 
-*Version 0.1 - Last Updated: 03.08.2025*
+*Version 0.1 - Last Updated: 01.09.2025*
 
-Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000, accessible via a COM/ActiveX interface in scripting environments like [Spider Monkey Panel](https://github.com/TheQwertiest/foo_spider_monkey_panel) or [JSplitter](https://foobar2000.ru/forum/viewtopic.php?t=6378).
+Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
+accessible via a COM/ActiveX interface in scripting environments like
+[Spider Monkey Panel](https://github.com/TheQwertiest/foo_spider_monkey_panel) or
+[JSplitter](https://foobar2000.ru/forum/viewtopic.php?t=6378).
 This document is for foobar2000 JavaScript developers, offering practical examples and a complete API reference.
 
 <br>
@@ -344,7 +347,7 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 ### Properties
 
 | Name                              | Type                 | Access     | Description                                                                 |
-|-----------------------------------|----------------------|------------|-----------------------------------------------------------------------------|
+|:----------------------------------|:---------------------|:-----------|:----------------------------------------------------------------------------|
 | MomentaryLUFS                     | number               | Read-only  | Momentary loudness in LUFS.                                                 |
 | ShortTermLUFS                     | number               | Read-only  | Short-Term loudness in LUFS.                                                |
 | RMS                               | number               | Read-only  | Overall RMS level in dBFS.                                                  |
@@ -387,7 +390,7 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 ### Methods
 
 | Name                            | Signature                                               | Description                                                      |
-|---------------------------------|---------------------------------------------------------|------------------------------------------------------------------|
+|:--------------------------------|:--------------------------------------------------------|:-----------------------------------------------------------------|
 | StartRealTimeMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts real-time monitoring.                                     |
 | StopRealTimeMonitoring          | () -> void                                              | Stops real-time monitoring.                                      |
 | StartPeakmeterMonitoring        | (refreshRate: number, chunkDuration: number) -> void    | Starts peakmeter monitoring.                                     |
@@ -471,7 +474,7 @@ Common errors include:
 ## Terminology
 
 | Term                                    | Definition                                                                                                 |
-|-----------------------------------------|------------------------------------------------------------------------------------------------------------|
+|:----------------------------------------|:-----------------------------------------------------------------------------------------------------------|
 | Momentary LUFS                          | Momentary loudness in LUFS, typically -70 to 0, measured over ~400 ms.                                     |
 | Short-Term LUFS                         | Short-Term loudness in LUFS, typically -70 to 0, averaged over ~3 seconds.                                 |
 | Integrated LUFS                         | Integrated loudness in LUFS, typically -70 to 0, averaged over ~3 seconds.                                 |
@@ -508,4 +511,4 @@ Common errors include:
 
 ## Support
 
-- [Audio Wizard on Github](https://github.com/TT-ReBORN/foo_audio_wizard)
+- [Audio Wizard on Github](https://github.com/The-Wizardium/Audio-Wizard)

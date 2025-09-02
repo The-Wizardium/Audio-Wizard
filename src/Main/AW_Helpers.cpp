@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Helpers Source File                        * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1                                                     * //
+// * Version:        0.1.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    22-12-2024                                              * //
+// * Last change:    01-09-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -469,9 +469,14 @@ namespace AWHAudioDSP {
 #pragma region Audio Dynamics Helpers
 namespace AWHAudioDynamics {
 	double ApplyPerceptualLoudnessAdaptation(double blockLufs, double stableDuration, double refLufs, double tau, double adaptStrength) {
+		if (!std::isfinite(refLufs) || !std::isfinite(blockLufs)) {
+			return blockLufs;
+		}
+
 		double deltaLUFS = blockLufs - refLufs;
 		double adaptationFactor = 1.0 - std::exp(-stableDuration / tau);
 		double adaptedDelta = deltaLUFS * (1.0 - adaptStrength * adaptationFactor);
+
 		return refLufs + adaptedDelta;
 	}
 
@@ -1281,7 +1286,8 @@ namespace AWHAudioFFT {
 			size_t m2 = r / 2;
 			for (size_t j = 0; j < m2; ++j) {
 				for (size_t i = 0; i < n1; ++i) {
-					twiddles[idx + j] = std::polar(1.0, -2.0 * PI * (i + n1 * j) / n2);
+					twiddles[idx + j] = std::polar(1.0, -2.0 * PI *
+					(static_cast<double>(i) + static_cast<double>(n1) * static_cast<double>(j)) / n2);
 				}
 			}
 			idx += m2;
