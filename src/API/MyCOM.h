@@ -88,13 +88,13 @@ public:
 	STDMETHOD(SetFullTrackWaveformCallback)(const VARIANT* callback);
 
 	// * PUBLIC API - FULL-TRACK METHODS * //
-	STDMETHOD(StartWaveformAnalysis)(const VARIANT& metadata, LONG pointsPerSec) const;
+	STDMETHOD(StartWaveformAnalysis)(VARIANT metadata, LONG pointsPerSec) const;
 	STDMETHOD(StopWaveformAnalysis)() const;
 	STDMETHOD(GetWaveformData)(LONG trackIndex, SAFEARRAY** data) const;
 	STDMETHOD(GetWaveformTrackCount)(LONG* count) const;
 	STDMETHOD(GetWaveformTrackDuration)(LONG trackIndex, DOUBLE* duration) const;
 	STDMETHOD(GetWaveformTrackPath)(LONG trackIndex, BSTR* path) const;
-	STDMETHOD(StartFullTrackAnalysis)(const VARIANT& metadata, LONG chunkDurationMs) const;
+	STDMETHOD(StartFullTrackAnalysis)(VARIANT metadata, LONG chunkDurationMs) const;
 	STDMETHOD(GetFullTrackAnalysis)(VARIANT_BOOL* pSuccess) const;
 	STDMETHOD(GetFullTrackMetrics)(SAFEARRAY** metrics);
 	STDMETHOD(GetMomentaryLUFSFull)(VARIANT* trackIndex, double* value) const;

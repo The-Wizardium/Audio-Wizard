@@ -715,7 +715,7 @@ STDMETHODIMP MyCOM::SetFullTrackWaveformCallback(const VARIANT* callback) {
 // * MyCOM - PUBLIC API - FULL-TRACK METHODS * //
 /////////////////////////////////////////////////
 #pragma region MyCOM - Public API - Full-Track Methods
-STDMETHODIMP MyCOM::StartWaveformAnalysis(const VARIANT& metadata, LONG pointsPerSec) const {
+STDMETHODIMP MyCOM::StartWaveformAnalysis(VARIANT metadata, LONG pointsPerSec) const {
 	if (!AudioWizard::Waveform()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartWaveformAnalysis", L"AudioWizard::Waveform not available", true);
 	}
@@ -804,7 +804,7 @@ STDMETHODIMP MyCOM::GetWaveformTrackPath(LONG trackIndex, BSTR* path) const {
 	return S_OK;
 }
 
-STDMETHODIMP MyCOM::StartFullTrackAnalysis(const VARIANT& metadata, LONG chunkDurationMs) const {
+STDMETHODIMP MyCOM::StartFullTrackAnalysis(VARIANT metadata, LONG chunkDurationMs) const {
 	if (!AudioWizard::Main()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartFullTrackAnalysis",
 			L"AudioWizard::Main not available", true);
