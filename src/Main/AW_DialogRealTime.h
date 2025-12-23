@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Dialog Real-Time Header File               * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -31,7 +31,9 @@ public:
 	enum class MetricsMode {
 		Value = 0,
 		Meter = 1,
-		ValueAndMeter = 2
+		MeterAndPeak = 2,
+		ValueAndMeter = 3,
+		ValueAndMeterAndPeak = 4
 	};
 
 	AudioWizardDialogRealTime() = default;
@@ -45,6 +47,7 @@ public:
 		MSG_WM_SIZE(OnSize)
 		MSG_WM_TIMER(OnTimer)
 		MSG_WM_CLOSE(OnClose)
+		MESSAGE_HANDLER(WM_USER + 1, OnUpdateMetrics)
 		MESSAGE_HANDLER(WM_USER + 2, OnRefreshRateChanged)
 
 		MSG_WM_NCDESTROY(OnNcDestroy)
@@ -108,6 +111,8 @@ private:
 		double animatedValue;
 		ULONGLONG animationStartTime;
 		bool isAnimating;
+		double peakValue;
+		ULONGLONG peakTimestamp;
 	};
 	std::vector<MetricControl> metrics;
 	std::vector<MetricControl> leftMetrics;
@@ -198,9 +203,7 @@ private:
 
 	// * DIALOG METHODS * //
 	void DrawMeterBar(DRAWITEMSTRUCT* pDrawItem, double value);
-	ULONGLONG GetMeterBarAnimationDuration() const;
-	double GetMeterBarUpdateThreshold() const;
-	double GetMetricValueUpdateThreshold() const;
+	void DrawMeterBarPeak(HDC hdc, const RECT& rc, const MetricControl& metric, double percentage) const;
 	std::pair<double, double> GetDisplayRange(MetricId metricId) const;
 	int GetFontSize(const CRect& clientRect) const;
 	void SetButtonAnalysisPosition(HDWP hdwp, int groupX, int groupY) const;
@@ -233,6 +236,7 @@ private:
 	void OnToggleLog(UINT, int, CWindow);
 	void OnClose(UINT = 0, int = 0, CWindow = nullptr);
 	void OnNcDestroy();
+	LRESULT OnUpdateMetrics(UINT, WPARAM, LPARAM, BOOL);
 	LRESULT OnRefreshRateChanged(UINT, WPARAM, LPARAM, BOOL);
 };
 #pragma endregion

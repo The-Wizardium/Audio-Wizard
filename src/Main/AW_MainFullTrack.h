@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Full-Track Header File                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -25,8 +25,9 @@ public:
 
 	// * MAIN CONFIG * //
 	struct Config {
-		static constexpr int MIN_CHUNK_DURATION_MS = 17;
-		static constexpr int MAX_FULL_TRACK_CHUNK_MS = 200;
+		static constexpr int DEF_CHUNK_DURATION_MS = 200;
+		static constexpr int MIN_CHUNK_DURATION_MS = 10;
+		static constexpr int MAX_CHUNK_DURATION_MS = 1000;
 	};
 
 	// * ANALYSIS RESULT * //
@@ -51,7 +52,8 @@ public:
 		std::atomic<bool> isFullTrackMetricsComplete = false;
 		std::atomic<bool> isFullTrackMetricsActive = false;
 		std::atomic<bool> isFullTrackWaveformActive = false;
-		std::atomic<int> monitorChunkDurationMs = Config::MAX_FULL_TRACK_CHUNK_MS;
+		std::atomic<int> monitorChunkDurationMs = Config::DEF_CHUNK_DURATION_MS;
+		std::atomic<int> waveformChunkDurationMs = Config::MAX_CHUNK_DURATION_MS;
 	}; MonitorState monitor;
 
 	// * FETCHER STATE * //
@@ -68,9 +70,9 @@ public:
 	bool GetFullTrackAnalysisForDialog(const metadb_handle_list& tracks);
 	void GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics) const;
 	void SetFullTrackChunkDuration(int chunkDurationMs);
-	void StartFullTrackAnalysis(int chunkDurationMs, const metadb_handle_list& tracks);
+	void StartFullTrackAnalysis(const metadb_handle_list& tracks, int chunkDurationMs);
 	void StopFullTrackAnalysis();
-	void StartFullTrackWaveform(int chunkDurationMs, const metadb_handle_ptr& track);
+	void StartFullTrackWaveform(const metadb_handle_list& tracks, int chunkDurationMs);
 	void StopFullTrackWaveform();
 
 private:

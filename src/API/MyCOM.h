@@ -3,9 +3,9 @@
 // * Description:    MyCOM Header File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -74,18 +74,27 @@ public:
 	STDMETHOD(get_PeakmeterAdjustedLeftSamplePeak)(double* value) const;
 	STDMETHOD(get_PeakmeterAdjustedRightSamplePeak)(double* value) const;
 
+	// * PUBLIC API - FULL-TRACK PROPERTIES * //
+	STDMETHOD(get_FullTrackProcessing)(VARIANT_BOOL* value) const;
+
 	// * PUBLIC API - WAVEFORM PROPERTIES * //
-	STDMETHOD(get_WaveformData)(SAFEARRAY** data) const;
 	STDMETHOD(put_WaveformMetric)(LONG metric) const;
+
+	// * PUBLIC API - SYSTEM PROPERTIES * //
+	STDMETHOD(put_SystemDebugLog)(bool value) const;
 
 	// * PUBLIC API - FULL-TRACK ANALYSIS CALLBACKS * //
 	STDMETHOD(SetFullTrackAnalysisCallback)(const VARIANT* callback);
 	STDMETHOD(SetFullTrackWaveformCallback)(const VARIANT* callback);
 
 	// * PUBLIC API - FULL-TRACK METHODS * //
-	STDMETHOD(StartWaveformAnalysis)(LONG resolutionSec) const;
+	STDMETHOD(StartWaveformAnalysis)(const VARIANT& metadata, LONG pointsPerSec) const;
 	STDMETHOD(StopWaveformAnalysis)() const;
-	STDMETHOD(StartFullTrackAnalysis)(LONG chunkDurationMs) const;
+	STDMETHOD(GetWaveformData)(LONG trackIndex, SAFEARRAY** data) const;
+	STDMETHOD(GetWaveformTrackCount)(LONG* count) const;
+	STDMETHOD(GetWaveformTrackDuration)(LONG trackIndex, DOUBLE* duration) const;
+	STDMETHOD(GetWaveformTrackPath)(LONG trackIndex, BSTR* path) const;
+	STDMETHOD(StartFullTrackAnalysis)(const VARIANT& metadata, LONG chunkDurationMs) const;
 	STDMETHOD(GetFullTrackAnalysis)(VARIANT_BOOL* pSuccess) const;
 	STDMETHOD(GetFullTrackMetrics)(SAFEARRAY** metrics);
 	STDMETHOD(GetMomentaryLUFSFull)(VARIANT* trackIndex, double* value) const;

@@ -3,7 +3,7 @@
 // * Description:    Audio Wizard Settings Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
 // * Last change:    01-09-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
@@ -121,7 +121,11 @@ void AudioWizardSettings::InitMonitorSettings(HWND hWnd) {
 	AWHDialog::SetCheckBox(hWnd, IDC_MONITOR_CFG_STEREO_WIDTH, monitorDisplayStereoWidth);
 
 	AWHDialog::SetDropDownMenu(hWnd, IDC_MONITOR_CFG_METRICS_MODE, {
-		L"Value", L"Meter", L"Value and Meter"
+		L"Values",
+		L"Meters",
+		L"Meters + Peaks",
+		L"Values + Meters",
+		L"Values + Meters + Peaks"
 	}, monitorDisplayMetricsMode);
 
 	AWHDialog::SetDropDownMenu(hWnd, IDC_MONITOR_CFG_REFRESH_RATE, {

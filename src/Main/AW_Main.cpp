@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Source File                           * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -65,34 +65,28 @@ void AudioWizardMain::SetFullTrackWaveformCallback(const VARIANT* callback) {
 // * PUBLIC API - FULL-TRACK ANALYSIS CONTROL * //
 //////////////////////////////////////////////////
 #pragma region Public API - Full-Track Analysis Control
-void AudioWizardMain::StartFullTrackAnalysis(int chunkDurationMs) {
-	metadb_handle_list tracks;
-	static_api_ptr_t<playlist_manager> playlistManager;
-
-	const t_size playlistIndex = playlistManager->get_active_playlist();
-	playlistManager->playlist_get_selected_items(playlistIndex, tracks);
-
-	if (tracks.get_count() == 0) {
+void AudioWizardMain::StartFullTrackAnalysis(const metadb_handle_list& metadata, int chunkDurationMs) {
+	if (metadata.get_count() == 0) {
 		FB2K_console_formatter() << "Audio Wizard => StartFullTrackAnalysis: No tracks selected, cannot start analysis.";
+		AWHCOM::FireCallback(callbacks.fullTrackAnalysisCallback, false);
 		return;
 	}
 
-	mainFullTrack->StartFullTrackAnalysis(chunkDurationMs, tracks);
+	mainFullTrack->StartFullTrackAnalysis(metadata, chunkDurationMs);
 }
 
 void AudioWizardMain::StopFullTrackAnalysis() {
 	mainFullTrack->StopFullTrackAnalysis();
 }
 
-void AudioWizardMain::StartFullTrackWaveform(int chunkDurationMs) {
-	metadb_handle_ptr track;
-
-	if (!IsFullTrackSelected(track)) {
-		FB2K_console_formatter() << "Audio Wizard => StartFullTrackWaveform: No track selected, cannot start analysis.";
+void AudioWizardMain::StartFullTrackWaveform(const metadb_handle_list& metadata, int chunkDurationMs) {
+	if (metadata.get_count() == 0) {
+		FB2K_console_formatter() << "Audio Wizard => StartFullTrackWaveform: No track provided, cannot start analysis.";
+		AWHCOM::FireCallback(callbacks.fullTrackWaveformCallback, false);
 		return;
 	}
 
-	mainFullTrack->StartFullTrackWaveform(chunkDurationMs, track);
+	mainFullTrack->StartFullTrackWaveform(metadata, chunkDurationMs);
 }
 
 void AudioWizardMain::StopFullTrackWaveform() {

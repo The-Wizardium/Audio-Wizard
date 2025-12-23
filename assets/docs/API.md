@@ -1,6 +1,51 @@
+<div align="center">
+  <br>
+  <picture>
+	<source media="(prefers-color-scheme: dark)" srcset="../images/Audio-Wizard-Logo.svg">
+	<img src="../images/Audio-Wizard-Logo.svg" width="400" alt="Audio Wizard Logo">
+  </picture>
+  <br>
+  <br>
+</div>
+
+<div align="center">
+  <h1>
+	<picture>
+	  <source media="(prefers-color-scheme: dark)" srcset="../images/Audio-Wizard-Title-Dark.svg">
+	  <img src="../images/Audio-Wizard-Title-Light.svg" alt="Audio Wizard Title">
+	</picture>
+  </h1>
+</div>
+
+<div align="center">
+  <picture>
+	<source media="(prefers-color-scheme: dark)" srcset="../images/Audio-Wizard-Subtitle-Dark.svg">
+	<img src="../images/Audio-Wizard-Subtitle-Light.svg" alt="Audio Wizard Subtitle">
+  </picture>
+</div>
+
+<br>
+<br>
+
+Within the blazing heart of the **Rubynar Sanctum**, where the **Ruby Spell** pulses with sonic fire,
+the scribes of **The Wizardium** inscribe the chronicles of the **Audio Wizard's** ascent.
+Each sigil in this sacred codex unveils incantations — properties to bind, methods to command, and exemplars
+to guide — granting worthy scholars dominion over foobar2000's auditory essence,
+from its luminous loudness to the primal pulse of its dynamic soul.
+
+<br>
+
+<h3 align="center"><em><span title="The Wisdom Of The Divine Flame">⸺ Sapientia Flamma Divina ⸺</span></em></h3>
+<div align="center"><a href="https://github.com/The-Wizardium">A Sacred Chapter Of The Wizardium</a></div>
+
+<br>
+<h2></h2>
+<br>
+<br>
+
 # Audio Wizard - API Reference
 
-*Version 0.1 - Last Updated: 01.09.2025*
+*Version 0.2 - Last Updated: 23.12.2025*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -32,11 +77,13 @@ Retrieve and log real-time audio metrics:
 ```javascript
 /**
  * Starts real-time audio monitoring and logs various audio metrics.
+ * @param {number} [refreshRate] - The optional refresh rate from 10-1000ms.
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
  */
-function startRealTimeMonitoring() {
+function startRealTimeMonitoring(refreshRate = 33, chunkDuration = 50) {
 	if (!AudioWizard) return;
 
-	AudioWizard.StartRealTimeMonitoring(17, 50); // 17ms refresh rate, 50ms chunk duration
+	AudioWizard.StartRealTimeMonitoring(refreshRate, chunkDuration);
 
 	console.log('Real-time - Momentary LUFS:', AudioWizard.MomentaryLUFS.toFixed(2));
 	console.log('Real-time - Short Term LUFS:', AudioWizard.ShortTermLUFS.toFixed(2));
@@ -71,11 +118,13 @@ Retrieve and log adjusted RMS and sample peak levels for visual display:
 ```javascript
 /**
  * Starts peakmeter monitoring and logs adjusted RMS and sample peak levels.
+ * @param {number} [refreshRate] - The optional refresh rate from 10-1000ms.
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
  */
-function startPeakmeterMonitoring() {
+function startPeakmeterMonitoring(refreshRate = 33, chunkDuration = 50) {
 	if (!AudioWizard) return;
 
-	AudioWizard.StartPeakmeterMonitoring(17, 50); // 17ms refresh rate, 50ms chunk duration
+	AudioWizard.StartPeakmeterMonitoring(refreshRate, chunkDuration);
 
 	console.log('Peakmeter - Adjusted Left RMS:', AudioWizard.PeakmeterAdjustedLeftRMS.toFixed(2));
 	console.log('Peakmeter - Adjusted Right RMS:', AudioWizard.PeakmeterAdjustedRightRMS.toFixed(2));
@@ -103,11 +152,13 @@ Access and analyze raw PCM audio samples:
 ```javascript
 /**
  * Starts raw audio monitoring and processes raw PCM audio samples.
+ * @param {number} [refreshRate] - The optional refresh rate from 10-1000ms.
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
  */
-function startRawAudioMonitoring() {
+function startRawAudioMonitoring(refreshRate = 33, chunkDuration = 50) {
 	if (!AudioWizard) return;
 
-	AudioWizard.StartRawAudioMonitoring(17, 50); // 17ms refresh rate, 50ms chunk duration
+	AudioWizard.StartRawAudioMonitoring(refreshRate, chunkDuration);
 
 	try {
 		const startTime = Date.now();
@@ -158,115 +209,327 @@ function startRawAudioMonitoring() {
 <br>
 <br>
 
-### Full-Track Analysis
+### Full-Track Analysis (Track Metadata Helper)
 
-Asynchronously analyze selected tracks:
+Prepares COM-ready track metadata from metadb handle(s):
 
 ```javascript
 /**
- * Starts analyzing asynchronously selected tracks and logs detailed audio metrics.
+ * Prepares COM-ready track metadata from metadb handle(s), with fallback to selected items if null.
+ * @global
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb -
+ *  - FbMetadbHandle: fb.GetNowPlaying() or fb.GetSelected();
+ *  - FbMetadbHandleList: plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
+ *  - null: defaults to plman.GetPlaylistSelectedItems(plman.ActivePlaylist).
+ * @returns {Object} { handleList: FbMetadbHandleList, metadata: string[], artists: string[], albums: string[], titles: string[] }
+ *  - metadata: Array of "path\u001Fsubsong" strings (e.g., "C:\\song.mp3\u001F0"), auto-marshaled to VT_ARRAY | VT_BSTR for COM.
  */
-async function startFullTrackAnalysis() {
-	if (!AudioWizard) return;
+function getMetadata(metadb) {
+	const handleData = metadb || plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
+	const handleList = new FbMetadbHandleList(handleData);
+	const handleArray = handleList.Convert();
+	const handleCount = handleArray.length;
 
-	console.log("Audio Wizard => Starting full-track metrics analysis...");
+	const metadata = new Array(handleCount);
+	const artists = new Array(handleCount);
+	const albums = new Array(handleCount);
+	const titles = new Array(handleCount);
+
+	const sep = Unicode.InformationSeparatorOne;
+	const combinedTf = fb.TitleFormat(`%artist%${sep}%album%${sep}%title%`);
+
+	for (let i = 0; i < handleCount; i++) {
+		const handle = handleArray[i];
+		const parts = combinedTf.EvalWithMetadb(handle).split(sep);
+		metadata[i] = `${handle.Path}${sep}${handle.SubSong}`;
+		artists[i] = parts[0] || "Unknown Artist";
+		albums[i]  = parts[1] || "Unknown Album";
+		titles[i]  = parts[2] || "Unknown Title";
+	}
+
+	return { handleList, metadata, artists, albums, titles };
+}
+```
+
+**Notes**:
+- Metadata format uses Unicode Information Separator One (U+001F) to separate path and subsong.
+- Returns all necessary information for track identification and display.
+- Automatically marshaled to COM-compatible format (VT_ARRAY | VT_BSTR).
+
+<br>
+<br>
+
+### Full-Track Analysis (Batch Retrieval)
+
+Asynchronously analyze tracks using batch metrics retrieval:
+
+```javascript
+/**
+ * Starts full-track metrics analysis using GetFullTrackMetrics (batch retrieval).
+ * @global
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
+ * @returns {Promise<{success: boolean, metrics?: any}>}
+ */
+async function startFullTrackMetricsBatch(metadb, chunkDuration = 200) {
+	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
+		return { success: false };
+	}
+
+	console.log("Audio Wizard => Starting full-track metrics batch analysis...");
 
 	try {
-		await new Promise((resolve, reject) => {
-			const onComplete = () => {
-				console.log("Audio Wizard => Analysis complete!");
+		const { handleList, metadata, artists, albums, titles } = getMetadata(metadb);
+		console.log(`Audio Wizard => Processing ${artists.length} track(s) via unified format`);
 
-				const metricsPerTrack = 12; // M LUFS, S LUFS, I LUFS, RMS, SP, TP, PSR, PLR, CF, LRA, DR, PD
-				const metrics = AudioWizard.GetFullTrackMetrics();
+		return await new Promise((resolve) => {
+			const onComplete = (success) => {
+				try {
+					console.log(`Audio Wizard => Batch metrics callback fired, success: ${success}`);
 
-				const selectedTracks = plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
-				const tfArtist = fb.TitleFormat("%artist%");
-				const tfAlbum = fb.TitleFormat("%album%");
-				const tfTitle = fb.TitleFormat("%title%");
-
-				console.log(`Audio Wizard => Analyzed ${selectedTracks.Count} track(s):`);
-
-				for (let i = 0; i < selectedTracks.Count; i++) {
-					const track = selectedTracks[i];
-					const artist = tfArtist.EvalWithMetadb(track);
-					const album = tfAlbum.EvalWithMetadb(track);
-					const title = tfTitle.EvalWithMetadb(track);
-					const offset = i * metricsPerTrack;
-
-					console.log(`Audio Wizard => GetFullTrackMetrics => Track ${i + 1}: ${artist} - ${album} - ${title}`);
-					console.log(`  M LUFS: ${metrics[offset + 0].toFixed(2)}`);
-					console.log(`  S LUFS: ${metrics[offset + 1].toFixed(2)}`);
-					console.log(`  I LUFS: ${metrics[offset + 2].toFixed(2)}`);
-					console.log(`  RMS: ${metrics[offset + 3].toFixed(2)}`);
-					console.log(`  Sample Peak: ${metrics[offset + 4].toFixed(2)}`);
-					console.log(`  True Peak: ${metrics[offset + 5].toFixed(2)}`);
-					console.log(`  PSR: ${metrics[offset + 6].toFixed(2)}`);
-					console.log(`  PLR: ${metrics[offset + 7].toFixed(2)}`);
-					console.log(`  CF: ${metrics[offset + 8].toFixed(2)}`);
-					console.log(`  LRA: ${metrics[offset + 9].toFixed(2)}`);
-					console.log(`  DR: ${metrics[offset + 10].toFixed(2)}`);
-					console.log(`  PD: ${metrics[offset + 11].toFixed(2)}`);
-
-					console.log(`Audio Wizard => Individual Metrics => Track ${i + 1}: ${artist} - ${album} - ${title}`);
-					console.log(`  M LUFS: ${AudioWizard.GetMomentaryLUFSFull(i).toFixed(2)}`);
-					console.log(`  S LUFS: ${AudioWizard.GetShortTermLUFSFull(i).toFixed(2)}`);
-					console.log(`  I LUFS: ${AudioWizard.GetIntegratedLUFSFull(i).toFixed(2)}`);
-					console.log(`  RMS: ${AudioWizard.GetRMSFull(i).toFixed(2)}`);
-					console.log(`  Sample Peak: ${AudioWizard.GetSamplePeakFull(i).toFixed(2)}`);
-					console.log(`  True Peak: ${AudioWizard.GetTruePeakFull(i).toFixed(2)}`);
-					console.log(`  PSR: ${AudioWizard.GetPSRFull(i).toFixed(2)}`);
-					console.log(`  PLR: ${AudioWizard.GetPLRFull(i).toFixed(2)}`);
-					console.log(`  CF: ${AudioWizard.GetCrestFactorFull(i).toFixed(2)}`);
-					console.log(`  LRA: ${AudioWizard.GetLoudnessRangeFull(i).toFixed(2)}`);
-					console.log(`  DR: ${AudioWizard.GetDynamicRangeFull(i).toFixed(2)}`);
-					console.log(`  PD: ${AudioWizard.GetPureDynamicsFull(i).toFixed(2)}`);
-
-					console.log("\n");
-				}
-
-				// Compute and log DR and PD album metrics
-				const albums = new Map();
-				for (let i = 0; i < selectedTracks.Count; i++) {
-					const track = selectedTracks[i];
-					const album = tfAlbum.EvalWithMetadb(track);
-					const artist = tfArtist.EvalWithMetadb(track);
-					if (album && !albums.has(album)) {
-						albums.set(album, artist || "Unknown Artist");
+					if (!success) {
+						console.log('Audio Wizard => No tracks selected, returning empty batch result');
+						resolve({ success: false });
+						return;
 					}
+
+					console.log("Audio Wizard => Batch metrics analysis complete!");
+
+					const metricsPerTrack = 12;
+					const metrics = AudioWizard.GetFullTrackMetrics();
+
+					console.log(`Audio Wizard => Analyzed ${handleList.Count} track(s) with GetFullTrackMetrics:`);
+
+					for (let i = 0; i < handleList.Count; i++) {
+						const artist = artists[i];
+						const album = albums[i];
+						const title = titles[i];
+						const offset = i * metricsPerTrack;
+
+						console.log(`Audio Wizard => GetFullTrackMetrics => Track ${i + 1}: ${artist} - ${album} - ${title}`);
+						console.log(`  M LUFS: ${metrics[offset + 0].toFixed(2)}`);
+						console.log(`  S LUFS: ${metrics[offset + 1].toFixed(2)}`);
+						console.log(`  I LUFS: ${metrics[offset + 2].toFixed(2)}`);
+						console.log(`  RMS: ${metrics[offset + 3].toFixed(2)}`);
+						console.log(`  Sample Peak: ${metrics[offset + 4].toFixed(2)}`);
+						console.log(`  True Peak: ${metrics[offset + 5].toFixed(2)}`);
+						console.log(`  PSR: ${metrics[offset + 6].toFixed(2)}`);
+						console.log(`  PLR: ${metrics[offset + 7].toFixed(2)}`);
+						console.log(`  CF: ${metrics[offset + 8].toFixed(2)}`);
+						console.log(`  LRA: ${metrics[offset + 9].toFixed(2)}`);
+						console.log(`  DR: ${metrics[offset + 10].toFixed(2)}`);
+						console.log(`  PD: ${metrics[offset + 11].toFixed(2)}`);
+						console.log("\n");
+					}
+
+					resolve({ success: true, metrics });
 				}
-
-				console.log(`Audio Wizard => Analyzed ${albums.size} album(s):`);
-
-				for (const [album, artist] of albums.entries()) {
-					const dr = AudioWizard.GetDynamicRangeAlbumFull(album);
-					const pd = AudioWizard.GetPureDynamicsAlbumFull(album);
-					console.log(`Audio Wizard => Album metrics: ${artist} - ${album}`);
-					console.log(`  DR-A: ${dr === -Infinity ? '-inf' : dr.toFixed(2)}`);
-					console.log(`  PD-A: ${pd === -Infinity ? '-inf' : pd.toFixed(2)}`);
+				catch (e) {
+					console.log(`Audio Wizard => Error in batch metrics callback: ${e.message}`);
+					resolve({ success: false });
 				}
-
-				resolve();
 			};
 
-			try {
-				AudioWizard.SetFullTrackAnalysisCallback(onComplete);
-				AudioWizard.StartFullTrackAnalysis(100);
-			} catch (e) {
-				reject(new Error(`Audio Wizard => Failed to start full-track metrics analysis: ${e.description}`));
-			}
+			AudioWizard.SetFullTrackAnalysisCallback(onComplete);
+			AudioWizard.StartFullTrackAnalysis(metadata, chunkDuration);
 		});
 	}
 	catch (e) {
-		console.log(`Audio Wizard => Error in full-track metrics analysis: ${e.message}`);
+		console.log(`Audio Wizard => Unexpected error in full-track metrics batch analysis: ${e.message}`);
+		return { success: false };
 	}
 }
 ```
 
 **Notes**:
 - Requires `plman` and `fb` objects.
-- Uses `Promise` for asynchronous analysis.
-- Specify track index in individual getters.
+- Uses `Promise` for asynchronous analysis with timeout.
+- Check `FullTrackProcessing` property before starting to avoid overlapping operations.
+- This method allows analyzing ANY tracks using the metadata array overload, not just selected ones.
+- Callback receives a `success` boolean parameter indicating completion status.
+- Uses `GetFullTrackMetrics()` for efficient batch retrieval of all metrics.
+
+<br>
+<br>
+
+### Full-Track Analysis (Individual Getters)
+
+Asynchronously analyze tracks using individual metric getters:
+
+```javascript
+/**
+ * Starts full-track metrics analysis using single getters (e.g., GetMomentaryLUFSFull).
+ * @global
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
+ * @returns {Promise<{success: boolean, singleMetrics?: any}>}
+ */
+async function startFullTrackMetricsSingle(metadb, chunkDuration = 200) {
+	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
+		return { success: false };
+	}
+
+	console.log("Audio Wizard => Starting full-track single metrics analysis...");
+
+	try {
+		const { handleList, metadata, artists, albums, titles } = getMetadata(metadb);
+
+		if (!handleList || handleList.Count === 0) {
+			console.log("Audio Wizard => No tracks to analyze.");
+			return { success: false };
+		}
+
+		const trackCount = handleList.Count;
+
+		return await new Promise((resolve) => {
+			const onComplete = (success) => {
+				if (!success) {
+					console.log('Audio Wizard => Analysis failed or was cancelled');
+					resolve({ success: false, singleMetrics: new Map() });
+					return;
+				}
+
+				console.log("Audio Wizard => Single metrics analysis complete!");
+				console.log(`Audio Wizard => Analyzed ${trackCount} track(s):`);
+
+				const singleMetrics = new Map();
+
+				for (let i = 0; i < trackCount; i++) {
+					const key = `${artists[i]} - ${albums[i]} - ${titles[i]}`;
+
+					const metrics = {
+						mLufs: AudioWizard.GetMomentaryLUFSFull(i),
+						sLufs: AudioWizard.GetShortTermLUFSFull(i),
+						iLufs: AudioWizard.GetIntegratedLUFSFull(i),
+						rms: AudioWizard.GetRMSFull(i),
+						samplePeak: AudioWizard.GetSamplePeakFull(i),
+						truePeak: AudioWizard.GetTruePeakFull(i),
+						psr: AudioWizard.GetPSRFull(i),
+						plr: AudioWizard.GetPLRFull(i),
+						cf: AudioWizard.GetCrestFactorFull(i),
+						lra: AudioWizard.GetLoudnessRangeFull(i),
+						dr: AudioWizard.GetDynamicRangeFull(i),
+						pd: AudioWizard.GetPureDynamicsFull(i)
+					};
+
+					singleMetrics.set(key, metrics);
+
+					console.log(`Audio Wizard => Track ${i + 1}: ${key}`);
+					console.log(`  M LUFS: ${metrics.mLufs.toFixed(2)} | S LUFS: ${metrics.sLufs.toFixed(2)} | I LUFS: ${metrics.iLufs.toFixed(2)}`);
+					console.log(`  RMS: ${metrics.rms.toFixed(2)} | Peak: ${metrics.samplePeak.toFixed(2)} | True Peak: ${metrics.truePeak.toFixed(2)}`);
+					console.log(`  PSR: ${metrics.psr.toFixed(2)} | PLR: ${metrics.plr.toFixed(2)} | CF: ${metrics.cf.toFixed(2)}`);
+					console.log(`  LRA: ${metrics.lra.toFixed(2)} | DR: ${metrics.dr.toFixed(2)} | PD: ${metrics.pd.toFixed(2)}`);
+					console.log("");
+				}
+
+				resolve({ success: true, singleMetrics });
+			};
+
+			AudioWizard.SetFullTrackAnalysisCallback(onComplete);
+			AudioWizard.StartFullTrackAnalysis(metadata, chunkDuration);
+		});
+	}
+	catch (e) {
+		console.log(`Audio Wizard => Error in full-track single metrics analysis: ${e.message || e}`);
+		return { success: false };
+	}
+}
+```
+
+**Notes**:
+- Requires `plman` and `fb` objects.
+- Uses `Promise` for asynchronous analysis with timeout.
+- Check `FullTrackProcessing` property before starting.
+- Specify track index in individual getters (e.g., `GetMomentaryLUFSFull(i)`).
 - Call `StopFullTrackAnalysis()` to abort early.
+
+<br>
+<br>
+
+### Full-Track Analysis (Album-Level)
+
+Asynchronously analyze album-level metrics:
+
+```javascript
+/**
+ * Starts full-track metrics analysis for album-level metrics.
+ * @global
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
+ * @param {number} [chunkDuration] - The optional chunk duration from 10-1000ms.
+ * @returns {Promise<{success: boolean, albums?: Map}>}
+ */
+async function startFullTrackMetricsAlbum(metadb, chunkDuration = 200) {
+	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
+		return { success: false };
+	}
+
+	console.log("Audio Wizard => Starting full-track album metrics analysis...");
+
+	try {
+		const { handleList, metadata, artists, albums } = getMetadata(metadb);
+
+		if (!handleList || handleList.Count === 0) {
+			console.log("Audio Wizard => No tracks to analyze.");
+			return { success: false };
+		}
+
+		return await new Promise((resolve) => {
+			const onComplete = (success) => {
+				if (!success) {
+					console.log('Audio Wizard => Analysis failed or cancelled');
+					resolve({ success: false, albums: new Map() });
+					return;
+				}
+
+				console.log("Audio Wizard => Album metrics analysis complete!");
+
+				const albumMetrics = new Map();
+				const albumUniques = new Set();
+
+				for (let i = 0; i < handleList.Count; i++) {
+					const album = albums[i];
+					if (!album || albumUniques.has(album)) continue;
+
+					albumUniques.add(album);
+
+					albumMetrics.set(album, {
+						artist: artists[i],
+						dr: AudioWizard.GetDynamicRangeAlbumFull(album),
+						pd: AudioWizard.GetPureDynamicsAlbumFull(album)
+					});
+				}
+
+				console.log(`Audio Wizard => Analyzed ${albumMetrics.size} unique album(s):`);
+
+				for (const [album, data] of albumMetrics.entries()) {
+					const drA = data.dr === -Infinity ? '-inf' : data.dr.toFixed(2);
+					const pdA = data.pd === -Infinity ? '-inf' : data.pd.toFixed(2);
+
+					console.log(`Audio Wizard => Album: ${data.artist} - ${album}`);
+					console.log(`  DR-A: ${drA} | PD-A: ${pdA}`);
+					console.log('');
+				}
+
+				resolve({ success: true, albums: albumMetrics });
+			};
+
+			AudioWizard.SetFullTrackAnalysisCallback(onComplete);
+			AudioWizard.StartFullTrackAnalysis(metadata, chunkDuration);
+		});
+	}
+	catch (e) {
+		console.log(`Audio Wizard => Error in full-track album metrics analysis: ${e.message || e}`);
+		return { success: false };
+	}
+}
+```
+
+**Notes**:
+- Requires `plman` and `fb` objects.
+- Uses `Promise` for asynchronous analysis with timeout.
+- Check `FullTrackProcessing` property before starting.
+- Use `GetDynamicRangeAlbumFull(album)` and `GetPureDynamicsAlbumFull(album)` with album name.
+- Album metrics (DR-A, PD-A) are computed across all tracks in the album.
 
 <br>
 <br>
@@ -277,28 +540,141 @@ Generate waveform data:
 
 ```javascript
 /**
- * Starts waveform analysis and logs the resulting waveform data.
+ * Starts waveform analysis for single or multiple tracks.
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
+ * @param {number} [metric] - The optional waveform metric (0-3).
+ * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
+ * @returns {Promise<{success: boolean, tracks?: Array<{index: number, path: string, duration: number, waveformData: Array}>}>}
  */
-function startWaveformAnalysis() {
-	if (!AudioWizard) return;
+async function startWaveformAnalysis(metadb, metric = 0, resolution = 1) {
+	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
+		return { success: false };
+	}
 
 	console.log("Audio Wizard => Starting waveform analysis...");
 
-	AudioWizard.WaveformMetric = 0; // 0 = RMS, 2 = RMS_Peak, 3 = Peak, 4 = Waveform_Peak
-	AudioWizard.StartWaveformAnalysis(100); // 100 ms resolution
+	try {
+		const { metadata } = getMetadata(metadb);
 
-	AudioWizard.SetFullTrackWaveformCallback(() => {
-		console.log('Audio Wizard => Waveform analysis complete!');
-		console.log('Waveform Data:', AudioWizard.WaveformData);
+		return await new Promise((resolve) => {
+			const onComplete = (success) => {
+				try {
+					console.log(`Audio Wizard => Waveform callback fired, success: ${success}`);
+
+					if (!success) {
+						console.log('Audio Wizard => Waveform analysis failed');
+						resolve({ success: false });
+						return;
+					}
+
+					const tracks = [];
+					const trackCount = AudioWizard.GetWaveformTrackCount();
+					console.log(`Audio Wizard => Processing ${trackCount} track(s)`);
+
+					// Retrieve each track's waveform data
+					for (let i = 0; i < trackCount; i++) {
+						const waveformData = AudioWizard.GetWaveformData(i);
+						const path = AudioWizard.GetWaveformTrackPath(i);
+						const duration = AudioWizard.GetWaveformTrackDuration(i).toFixed(2);
+						const resolution = (waveformData.length / duration / 4).toFixed(1);
+						tracks.push({ index: i, path, duration, waveformData });
+						console.log(`Audio Wizard => Track ${i + 1}: ${waveformData.length} waveform values over ${duration}s (resolution: ~${resolution} pts/sec)`);
+						// console.log(`Audio Wizard => Track ${i + 1}: ${waveformData}`);
+					}
+
+					resolve({ success: true, tracks });
+				}
+				catch (e) {
+					AudioWizard.StopWaveformAnalysis();
+					resolve({ success: false });
+					console.log(`Audio Wizard => Error in waveform callback: ${e.message}`);
+				}
+			};
+
+			AudioWizard.WaveformMetric = metric;
+			AudioWizard.SetFullTrackWaveformCallback(onComplete);
+			AudioWizard.StartWaveformAnalysis(metadata, resolution);
+		});
+	}
+	catch (e) {
+		console.log(`Audio Wizard => Error in waveform analysis: ${e.message}`);
 		AudioWizard.StopWaveformAnalysis();
-	});
+		return { success: false };
+	}
 }
 ```
 
 **Notes**:
-- Set `WaveformMetric` before analysis.
-- Use `SetFullTrackWaveformCallback` for completion.
-- Call `StopWaveformAnalysis()` when done.
+- Set `WaveformMetric` before analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).
+- Uses `Promise` for asynchronous analysis with timeout.
+- Check `FullTrackProcessing` property before starting.
+- This method allows analyzing ANY tracks using the metadata array overload.
+- Use `SetFullTrackWaveformCallback` for completion notification.
+- Call `StopWaveformAnalysis()` to abort or clean up after completion.
+- Resolution is in points per second (1-1000).
+
+<br>
+<br>
+
+### Waveform Analysis (Persistence & Caching)
+
+Demonstrates how to analyze multiple tracks and save the results to the local file system using compression.
+
+```javascript
+/**
+ * Analyzes tracks and saves the waveform data to JSON files in a cache folder.
+ * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
+ * @param {string} cachePath - The folder where .aw.json files will be stored.
+ * @param {number} [metric] - The optional waveform metric (0-3).
+ * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
+ */
+async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolution) {
+	if (!AudioWizard || AudioWizard.FullTrackProcessing) return;
+
+	console.log(`Audio Wizard => Batch processing ${metadb.Count} tracks...`);
+
+	const result = await startWaveformAnalysis(metadb, metric, resolution);
+	if (!result.success) return;
+
+	const fso = new ActiveXObject('Scripting.FileSystemObject');
+	if (!fso.FolderExists(cachePath)) fso.CreateFolder(cachePath);
+
+	const tfArtistTitle = fb.TitleFormat('%artist% - %title%');
+	const regexIllegalChars = /[<>:"\/\\|?*]+/g;
+	const regexFileExtension = /\.[^/.]+$/;
+
+	for (const track of result.tracks) {
+		const structuredData = [];
+		const handle = metadb[track.index];
+		let fileName = tfArtistTitle.EvalWithMetadb(handle).trim();
+
+		if (!fileName) {
+			const baseName = track.path.split('\\').pop().replace(regexFileExtension, '');
+			fileName = baseName || track.path;
+		}
+
+		fileName = fileName.replace(regexIllegalChars, '_').substring(0, 100);
+		const fullPath = `${cachePath}\\${fileName}.aw.json`;
+
+		for (let i = 0, len = track.waveformData.length; i < len; i += 4) {
+			structuredData.push(track.waveformData.slice(i, i + 4));
+		}
+
+		try {
+			const file = fso.CreateTextFile(fullPath, true, true);
+			file.Write(JSON.stringify(structuredData));
+			file.Close();
+			console.log(`Audio Wizard => Saved: ${fullPath}`);
+		} catch (e) {
+			console.log(`Audio Wizard => Failed to save ${track.path}: ${e.message}`);
+		}
+	}
+}
+```
+
+**Notes**:
+- GetWaveformData returns a flat array. Every 4 waveform metrics represent one time point.
+- For production use, consider using LZString or LZUTF8 to reduce file size by up to 90%.
 
 <br>
 <br>
@@ -370,7 +746,8 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | PeakmeterAdjustedRightSamplePeak  | number               | Read-only  | Adjusted sample peak for the right channel in dBFS, optimized for display.  |
 | RawAudioData                      | Array                | Read-only  | PCM audio samples for the current chunk.                                    |
 | WaveformMetric                    | number               | Read/Write | Metric for analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).   |
-| WaveformData                      | Array                | Read-only  | Waveform data points.                                                       |
+| FullTrackProcessing               | bool                 | Read-only  | Indicates if full-track analysis or waveform analysis is currently running. |
+| SystemDebugLog                    | bool                 | Read/Write | Prints detailed debug logs in the foobar console.                           |
 
 - **Peakmeter Monitoring**:
   - `PeakmeterOffset`: Adjusts gain for peakmeter measurements. Set as an integer (e.g., `AudioWizard.PeakmeterOffset = 5` for 5 dB); returns a float when read.
@@ -384,40 +761,47 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - `WaveformMetric`: Set to 0 (RMS), 1 (RMS_Peak), 2 (Peak), or 3 (Waveform_Peak) before analysis.
   - `WaveformData`: Waveform data points; see [Waveform Analysis](#waveform-analysis) example.
 
+- **Processing State**:
+  - `FullTrackProcessing`: Use this to check if an analysis operation is in progress before starting a new one.
+
 <br>
 <br>
 
 ### Methods
 
-| Name                            | Signature                                               | Description                                                      |
-|:--------------------------------|:--------------------------------------------------------|:-----------------------------------------------------------------|
-| StartRealTimeMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts real-time monitoring.                                     |
-| StopRealTimeMonitoring          | () -> void                                              | Stops real-time monitoring.                                      |
-| StartPeakmeterMonitoring        | (refreshRate: number, chunkDuration: number) -> void    | Starts peakmeter monitoring.                                     |
-| StopPeakmeterMonitoring         | () -> void                                              | Stops peakmeter monitoring.                                      |
-| StartRawAudioMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts raw audio data capture.                                   |
-| StopRawAudioMonitoring          | () -> void                                              | Stops raw audio data capture.                                    |
-| StartWaveformAnalysis           | (resolution: number) -> void                            | Starts asynchronous waveform analysis.                           |
-| StopWaveformAnalysis            | () -> void                                              | Stops waveform analysis.                                         |
-| SetFullTrackWaveformCallback    | (callback: Function) -> void                            | Sets the callback for waveform analysis completion.              |
-| StartFullTrackAnalysis          | (chunkDuration: number) -> void                         | Starts asynchronous analysis of selected tracks.                 |
-| StopFullTrackAnalysis           | () -> void                                              | Stops full-track analysis.                                       |
-| SetFullTrackAnalysisCallback    | (callback: Function) -> void                            | Sets the callback for analysis completion.                       |
-| GetFullTrackMetrics             | () -> Array                                             | Returns all metrics for all analyzed tracks.                     |
-| GetMomentaryLUFSFull            | ([index: number]) -> number                             | Returns Momentary LUFS for the specified track (default: 0).     |
-| GetShortTermLUFSFull            | ([index: number]) -> number                             | Returns Short Term LUFS for the specified track (default: 0).    |
-| GetIntegratedLUFSFull           | ([index: number]) -> number                             | Returns Integrated LUFS for the specified track (default: 0).    |
-| GetRMSFull                      | ([index: number]) -> number                             | Returns RMS for the specified track (default: 0).                |
-| GetSamplePeakFull               | ([index: number]) -> number                             | Returns Sample Peak for the specified track (default: 0).        |
-| GetTruePeakFull                 | ([index: number]) -> number                             | Returns True Peak for the specified track (default: 0).          |
-| GetPSRFull                      | ([index: number]) -> number                             | Returns PSR for the specified track (default: 0).                |
-| GetPLRFull                      | ([index: number]) -> number                             | Returns PLR for the specified track (default: 0).                |
-| GetCrestFactorFull              | ([index: number]) -> number                             | Returns Crest Factor for the specified track (default: 0).       |
-| GetLoudnessRangeFull            | ([index: number]) -> number                             | Returns Loudness Range for the specified track (default: 0).     |
-| GetDynamicRangeFull             | ([index: number]) -> number                             | Returns Dynamic Range for the specified track (default: 0).      |
-| GetPureDynamicsFull             | ([index: number]) -> number                             | Returns Pure Dynamics for the specified track (default: 0).      |
-| GetDynamicRangeAlbumFull        | (albumName: string) -> number                           | Returns Dynamic Range album metric for the specified album.      |
-| GetPureDynamicsAlbumFull        | (albumName: string) -> number                           | Returns Pure Dynamics album metric for the specified album.      |
+| Name                            | Signature                                               | Description                                                           |
+|:--------------------------------|:--------------------------------------------------------|:----------------------------------------------------------------------|
+| StartRealTimeMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts real-time monitoring.                                          |
+| StopRealTimeMonitoring          | () -> void                                              | Stops real-time monitoring.                                           |
+| StartPeakmeterMonitoring        | (refreshRate: number, chunkDuration: number) -> void    | Starts peakmeter monitoring.                                          |
+| StopPeakmeterMonitoring         | () -> void                                              | Stops peakmeter monitoring.                                           |
+| StartRawAudioMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts raw audio data capture.                                        |
+| StopRawAudioMonitoring          | () -> void                                              | Stops raw audio data capture.                                         |
+| StartWaveformAnalysis           | (metadata: string[], resolution: number) -> void        | Starts asynchronous waveform analysis (1-1000 points/s).              |
+| StopWaveformAnalysis            | () -> void                                              | Stops waveform analysis.                                              |
+| GetWaveformData                 | (trackIndex: number) -> Array                           | Returns waveform data points for the specified track (0-based index). |
+| GetWaveformTrackCount           | () -> number                                            | Returns the number of tracks loaded in waveform analysis.             |
+| GetWaveformTrackDuration        | (trackIndex: number) -> number                          | Returns the duration in seconds for the specified waveform track.     |
+| GetWaveformTrackPath            | (trackIndex: number) -> string                          | Returns the file path for the specified waveform track.               |
+| SetFullTrackWaveformCallback    | (callback: (success: bool) => void) -> void             | Sets the callback for waveform analysis completion.                   |
+| StartFullTrackAnalysis          | (metadata: string[], chunkDuration: number) -> void     | Starts asynchronous analysis.                                         |
+| StopFullTrackAnalysis           | () -> void                                              | Stops full-track analysis.                                            |
+| SetFullTrackAnalysisCallback    | (callback: (success: bool) => void) -> void             | Sets the callback for analysis completion.                            |
+| GetFullTrackMetrics             | () -> Array                                             | Returns all metrics for all analyzed tracks.                          |
+| GetMomentaryLUFSFull            | ([index: number]) -> number                             | Returns Momentary LUFS for the specified track (default: 0).          |
+| GetShortTermLUFSFull            | ([index: number]) -> number                             | Returns Short Term LUFS for the specified track (default: 0).         |
+| GetIntegratedLUFSFull           | ([index: number]) -> number                             | Returns Integrated LUFS for the specified track (default: 0).         |
+| GetRMSFull                      | ([index: number]) -> number                             | Returns RMS for the specified track (default: 0).                     |
+| GetSamplePeakFull               | ([index: number]) -> number                             | Returns Sample Peak for the specified track (default: 0).             |
+| GetTruePeakFull                 | ([index: number]) -> number                             | Returns True Peak for the specified track (default: 0).               |
+| GetPSRFull                      | ([index: number]) -> number                             | Returns PSR for the specified track (default: 0).                     |
+| GetPLRFull                      | ([index: number]) -> number                             | Returns PLR for the specified track (default: 0).                     |
+| GetCrestFactorFull              | ([index: number]) -> number                             | Returns Crest Factor for the specified track (default: 0).            |
+| GetLoudnessRangeFull            | ([index: number]) -> number                             | Returns Loudness Range for the specified track (default: 0).          |
+| GetDynamicRangeFull             | ([index: number]) -> number                             | Returns Dynamic Range for the specified track (default: 0).           |
+| GetPureDynamicsFull             | ([index: number]) -> number                             | Returns Pure Dynamics for the specified track (default: 0).           |
+| GetDynamicRangeAlbumFull        | (albumName: string) -> number                           | Returns Dynamic Range album metric for the specified album.           |
+| GetPureDynamicsAlbumFull        | (albumName: string) -> number                           | Returns Pure Dynamics album metric for the specified album.           |
 
 - **Real-Time Monitoring**:
   - `StartRealTimeMonitoring`: Set `refreshRate` (ms) and `chunkDuration` (ms) for update frequency and data granularity.
@@ -429,19 +813,24 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - `StartRawAudioMonitoring`: Use cautiously due to high data volume.
 
 - **Full-Track Analysis**:
-  - `StartFullTrackAnalysis`: Set `chunkDuration` (ms) for analysis granularity.
+  - `StartFullTrackAnalysis(metadata, chunkDuration)`: Analyzes specific tracks using metadata array.
+  - Metadata format: Array of strings with format `"path\u001Fsubsong"` (Unicode Information Separator One, U+001F).
   - `StopFullTrackAnalysis`: Use to abort early.
-  - `SetFullTrackAnalysisCallback`: Provide a JavaScript function for async completion.
-  - `GetFullTrackMetrics`: Returns array of metrics (LUFS, LRA, True Peak, PSR, PLR, DR) per track.
-  - `GetIntegratedLUFSFull`, `GetLoudnessRangeFull`, `GetTruePeakFull`, `GetPSRFull`, `GetPLRFull`, `GetDynamicRangeFull`: Use track index (default: 0).
+  - `SetFullTrackAnalysisCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
+  - `GetFullTrackMetrics`: Returns array of metrics (M LUFS, S LUFS, I LUFS, RMS, Sample Peak, True Peak, PSR, PLR, Crest Factor, LRA, DR, PD) per track. 12 metrics per track, indexed as: track_offset = track_index * 12.
+  - `GetMomentaryLUFSFull`, `GetShortTermLUFSFull`, `GetIntegratedLUFSFull`, `GetRMSFull`, `GetSamplePeakFull`, `GetTruePeakFull`, `GetPSRFull`, `GetPLRFull`, `GetCrestFactorFull`, `GetLoudnessRangeFull`, `GetDynamicRangeFull`, `GetPureDynamicsFull`: Use track index (default: 0).
 
 - **Full-Album Analysis**:
   - `GetDynamicRangeAlbumFull`: Use album name (string) to retrieve Dynamic Range album metric.
   - `GetPureDynamicsAlbumFull`: Use album name (string) to retrieve Pure Dynamics album metric.
 
 - **Waveform Analysis**:
-  - `StartWaveformAnalysis`: Set `resolution` (ms) for data granularity.
-  - `SetFullTrackWaveformCallback`: Provide a JavaScript function for async completion.
+  - `StartWaveformAnalysis(metadata, resolution)`: Analyzes specific tracks using metadata array (multi-track support).
+  - Set `resolution` (points per second, 1-1000) for data granularity.
+  - `GetWaveformData(trackIndex)`: Returns flat array of waveform points for the given track (4 values per point: RMS dB, RMS_Peak dB, Peak dB, Waveform_Peak).
+  - `GetWaveformTrackCount()`: Returns number of analyzed tracks – useful for looping.
+  - `GetWaveformTrackDuration(trackIndex)` and `GetWaveformTrackPath(trackIndex)`: Retrieve track metadata for display or caching.
+  - `SetFullTrackWaveformCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
 
 <br>
 <br>
@@ -453,9 +842,10 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 - **Raw Audio Data**:
   - At 44.1 kHz, a 50 ms `chunkDuration` generates ~2205 samples per channel. Use smaller chunks (e.g., 10 ms) for lower memory usage.
 - **Waveform Analysis**:
-  - Higher `resolution` (e.g., 10 ms) increases data points but may slow processing. Use 50-100 ms for most applications.
+  - Higher `resolution` (e.g., more than 20 points per second) increases data points but may slow processing. Use 1-20 points per second for most applications.
 - **Full-Track Analysis**:
   - Larger `chunkDuration` (e.g., 500 ms) reduces processing time but lowers granularity.
+  - Check `FullTrackProcessing` property before starting new analysis to avoid overlapping operations.
 
 <br>
 <br>
@@ -503,6 +893,7 @@ Common errors include:
 | Raw Audio Data                          | Raw PCM audio samples for the current chunk, unitless.                                                     |
 | Waveform Data                           | Data points for waveform analysis, depending on the selected metric (e.g., RMS, Peak).                     |
 | Waveform Metric                         | The metric used for waveform analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).                |
+| Waveform Resolution                     | The density of data points per second in waveform analysis, ranging from 1 to 1000.                        |
 | dBFS                                    | Decibels relative to Full Scale, a measure of amplitude relative to the maximum possible digital level.    |
 | dBTP                                    | Decibels True Peak, accounting for inter-sample peaks in digital audio.                                    |
 

@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -28,35 +28,52 @@ AudioWizardWaveform::~AudioWizardWaveform() = default;
 // * PUBLIC METHODS * //
 ////////////////////////
 #pragma region Public Methods
-void AudioWizardWaveform::StartWaveformAnalysis(int samplesPerSec) {
+void AudioWizardWaveform::StartWaveformAnalysis(const metadb_handle_list & tracks, int pointsPerSec) {
 	if (state.isAnalyzing.load()) {
 		StopWaveformAnalysis();
 	}
 
-	state.waveformSamples.clear();
-	state.completedWaveformSamples.clear();
-	state.waveformSamples.reserve(Config::MAX_SAMPLES);
-	state.lastSampleTime = 0.0;
-	state.maxAmplitude = 0.0;
-	state.isAnalysisComplete.store(false, std::memory_order_release);
-	state.isAnalyzing.store(false, std::memory_order_release);
+	// Initialize per-track storage
+	state.trackWaveforms.clear();
+	state.trackWaveforms.resize(tracks.get_count());
 
-	int clampedResolution = std::clamp(samplesPerSec, Config::MIN_SAMPLES_PER_SEC, Config::MAX_SAMPLES_PER_SEC);
-	state.samplesPerSecond.store(clampedResolution);
-	FB2K_console_formatter() << "Audio Wizard => SetResolution: " << clampedResolution << " samples/s";
+	int clampedPointsPerSec = std::clamp(
+		pointsPerSec, Config::MIN_POINTS_PER_SEC, Config::MAX_POINTS_PER_SEC
+	);
+
+	AWHDebug::DebugLog("StartWaveformAnalysis: Initialized ",
+		tracks.get_count(), " tracks at ", clampedPointsPerSec, " points/sec"
+	);
+
+	for (t_size i = 0; i < tracks.get_count(); ++i) {
+		auto& track = state.trackWaveforms[i];
+		track.handle = tracks[i];
+		track.duration = tracks[i]->get_length();
+		track.reset();
+
+		// Pre-reserve based on expected size
+		auto expectedSamples = static_cast<size_t>(
+			track.duration * clampedPointsPerSec * Config::WAVEFORM_CHUNK_ELEMENTS
+		);
+		track.samples.reserve(std::min(expectedSamples, Config::MAX_SAMPLES));
+	}
+
+	state.currentTrackIndex.store(0, std::memory_order_release);
+	state.pointsPerSecond.store(clampedPointsPerSec, std::memory_order_release);
+	state.isAnalysisComplete.store(false, std::memory_order_release);
 	state.isAnalyzing.store(true, std::memory_order_release);
 
-	AudioWizard::Main()->SetMonitoringChunkDuration(1000 / samplesPerSec);
-	AudioWizard::Main()->StartFullTrackWaveform(1000 / samplesPerSec);
+	int chunkDurationMs = 1000 / clampedPointsPerSec;
+	AudioWizard::Main()->StartFullTrackWaveform(tracks, chunkDurationMs);
 }
 
 void AudioWizardWaveform::StopWaveformAnalysis() {
 	if (!state.isAnalyzing.load()) return;
 
 	state.isAnalyzing.store(false, std::memory_order_release);
-	state.completedWaveformSamples = state.waveformSamples;
 	state.isAnalysisComplete.store(true, std::memory_order_release);
 
+	AWHDebug::DebugLog("StopWaveformAnalysis: Completed with ", state.trackWaveforms.size(), " tracks");
 	AudioWizard::Main()->StopFullTrackWaveform();
 }
 #pragma endregion
@@ -66,36 +83,63 @@ void AudioWizardWaveform::StopWaveformAnalysis() {
 // * PUBLIC API METHODS * //
 ////////////////////////////
 #pragma region Public API Methods
-bool AudioWizardWaveform::IsAnalysisComplete(double trackDurationSec) const {
-	double resolutionSec = 1.0 / state.samplesPerSecond.load();
-	double expectedSamples = (trackDurationSec / resolutionSec) * Config::WAVEFORM_CHUNK_ELEMENTS;
-	bool complete = state.isAnalysisComplete.load(std::memory_order_acquire) &&
-		state.completedWaveformSamples.size() >= static_cast<size_t>(expectedSamples * 0.95
-	);
+bool AudioWizardWaveform::IsWaveformAnalysisComplete(double trackDurationSec) const {
+	if (!state.isAnalysisComplete.load(std::memory_order_acquire)) {
+		return false;
+	}
 
-	FB2K_console_formatter() << "Audio Wizard => IsAnalysisComplete: " << state.completedWaveformSamples.size()
-		<< " samples, Expected: " << expectedSamples
-		<< ", Last time: " << state.lastSampleTime
-		<< "s, Complete: " << (complete ? "Yes" : "No");
+	double resolutionSec = 1.0 / state.pointsPerSecond.load();
+	double expectedPoints = (trackDurationSec / resolutionSec) * Config::WAVEFORM_CHUNK_ELEMENTS;
 
-	return complete;
+	for (const auto& track : state.trackWaveforms) {
+		if (track.samples.size() >= static_cast<size_t>(expectedPoints * 0.95)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
-void AudioWizardWaveform::GetWaveformData(SAFEARRAY** data) const {
-	if (!data) {
-		FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Invalid parameters";
+void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) const {
+	if (!data) return;
+
+	if (trackIndex >= state.trackWaveforms.size()) {
+		FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Invalid index " << trackIndex;
+
+		*data = AWHCOM::CreateSafeArrayFromData(
+			std::vector<double>{}.begin(), std::vector<double>{}.end(), "GetWaveformData"
+		);
+
 		return;
 	}
 
-	std::vector<double> samples = state.isAnalysisComplete.load(std::memory_order_acquire)
-		? state.completedWaveformSamples
-		: state.waveformSamples;
+	const auto& track = state.trackWaveforms[trackIndex];
+	*data = AWHCOM::CreateSafeArrayFromData(track.samples.begin(), track.samples.end(), "GetWaveformData");
 
-	*data = AWHCOM::CreateSafeArrayFromData(samples.begin(), samples.end(), "GetWaveformData");
+	AWHDebug::DebugLog("GetWaveformData[", trackIndex, "]: ", track.samples.size(), " samples");
+}
 
-	if (*data) {
-		FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Successfully created SAFEARRAY with " << samples.size() << " samples";
+size_t AudioWizardWaveform::GetWaveformTrackCount() const {
+	return state.trackWaveforms.size();
+}
+
+void AudioWizardWaveform::GetWaveformTrackInfo(size_t trackIndex, pfc::string8& path, double& duration) const {
+	if (trackIndex >= state.trackWaveforms.size()) {
+		path = "";
+		duration = 0.0;
+		return;
 	}
+
+	const auto& track = state.trackWaveforms[trackIndex];
+
+	if (track.handle.is_valid()) {
+		path = track.handle->get_path();
+	}
+	else {
+		path = "";
+	}
+
+	duration = track.duration;
 }
 
 void AudioWizardWaveform::SetWaveformMetric(WaveformMetric metric) {
@@ -113,22 +157,32 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 		return;
 	}
 
+	size_t currentIndex = state.currentTrackIndex.load(std::memory_order_acquire);
+
+	if (currentIndex >= state.trackWaveforms.size()) {
+		AWHDebug::DebugLog("ProcessWaveformMetrics: Invalid track index ", currentIndex);
+		return;
+	}
+
 	// Define constants for clarity and safety
-	const int samplesPerSecond = state.samplesPerSecond.load();
-	const double resolutionSec = 1.0 / static_cast<double>(samplesPerSecond);
-	const size_t framesPerResolution = std::max<size_t>(1, static_cast<size_t>(data.sampleRate / samplesPerSecond));
+	auto& track = state.trackWaveforms[currentIndex];
+	const int pointsPerSecond = state.pointsPerSecond.load();
+	const double resolutionSec = 1.0 / static_cast<double>(pointsPerSecond);
+	const size_t framesPerResolution = std::max<size_t>(1, static_cast<size_t>(data.sampleRate / pointsPerSecond));
 	const double rmsDivisor = data.channels > 1 ? 2.0 : 1.0;
 
 	// Reserve exact space for output vector to avoid reallocations
 	std::vector<double> output;
-	output.reserve((data.frames + framesPerResolution - 1) / framesPerResolution * AudioWizardWaveform::Config::WAVEFORM_CHUNK_ELEMENTS);
+	output.reserve((data.frames + framesPerResolution - 1) / framesPerResolution * Config::WAVEFORM_CHUNK_ELEMENTS);
 
-	double currentTime = state.lastSampleTime;
+	double currentTime = track.lastSampleTime;
 	double maxSquaredSampleSum = 0.0;
 	double lastWaveformPeak = 0.0;
 
 	// Process audio data in chunks
-	for (size_t framesProcessed = 0; framesProcessed < data.frames; framesProcessed += framesPerResolution) {
+	for (size_t framesProcessed = 0; framesProcessed < data.frames;
+		framesProcessed += framesPerResolution) {
+
 		const size_t chunkSize = std::min(framesPerResolution, data.frames - framesProcessed);
 		const double invChunkSize = 1.0 / static_cast<double>(chunkSize);
 
@@ -186,26 +240,13 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 		currentTime += resolutionSec;
 	}
 
-	// Update waveform state safely
-	auto& samples = state.waveformSamples;
-	const size_t maxSamples = AudioWizardWaveform::Config::MAX_SAMPLES;
-	if (samples.size() + output.size() > maxSamples) {
-		const size_t excess = samples.size() + output.size() - maxSamples;
-		samples.erase(samples.begin(), samples.begin() + excess);
-	}
-	samples.insert(samples.end(), output.begin(), output.end());
-	state.lastSampleTime = currentTime;
+	// Append to current track's samples
+	track.samples.insert(track.samples.end(), output.begin(), output.end());
+	track.duration = currentTime;
+	track.lastSampleTime = currentTime;
 
 	if (!output.empty()) {
-		state.maxAmplitude = std::max(state.maxAmplitude, *std::max_element(output.begin(), output.end()));
+		track.maxAmplitude = std::max(track.maxAmplitude, *std::max_element(output.begin(), output.end()));
 	}
-
-	// Log processing details
-	//FB2K_console_formatter() << "Audio Wizard => ProcessWaveformMetrics: Generated "
-	//	<< output.size() / AudioWizardWaveform::Config::WAVEFORM_CHUNK_ELEMENTS << " chunks for " << data.frames
-	//	<< " frames at resolution " << samplesPerSecond << " samples/s, "
-	//	<< "Last sample time: " << currentTime
-	//	<< "s, Expected chunk duration: " << (data.frames / data.sampleRate) << "s"
-	//	<< ", Sample waveformPeak: " << lastWaveformPeak;
 }
 #pragma endregion

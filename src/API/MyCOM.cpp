@@ -3,9 +3,9 @@
 // * Description:    MyCOM Source File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -628,22 +628,28 @@ STDMETHODIMP MyCOM::get_PeakmeterAdjustedRightSamplePeak(double* value) const {
 #pragma endregion
 
 
+////////////////////////////////////////////////////
+// * MyCOM - PUBLIC API - FULL-TRACK PROPERTIES * //
+////////////////////////////////////////////////////
+#pragma region MyCOM - Public API - Full-Track Properties
+STDMETHODIMP MyCOM::get_FullTrackProcessing(VARIANT_BOOL* value) const {
+	if (!value) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::get_FullTrackProcessing", L"Invalid pointer", false);
+	}
+	if (!AudioWizard::Main()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::get_FullTrackProcessing", L"AudioWizard::Main not available", false);
+	}
+
+	*value = AudioWizard::Main()->mainFullTrack->fetcher.isFullTrackFetching.load(std::memory_order_acquire) ? VARIANT_TRUE : VARIANT_FALSE;
+	return S_OK;
+}
+#pragma endregion
+
+
 /////////////////////////////////////////////////////////////
 // * MyCOM - PUBLIC API - FULL-TRACK WAVEFORM PROPERTIES * //
 /////////////////////////////////////////////////////////////
 #pragma region MyCOM - Public API - Full-Track Waveform Properties
-STDMETHODIMP MyCOM::get_WaveformData(SAFEARRAY** data) const {
-	if (!data) {
-		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::get_WaveformData", L"Invalid pointer", true);
-	}
-	if (!AudioWizard::Waveform()) {
-		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::get_WaveformData", L"AudioWizard::Waveform not available", true);
-	}
-
-	AudioWizard::Waveform()->GetWaveformData(data);
-	return S_OK;
-}
-
 STDMETHODIMP MyCOM::put_WaveformMetric(LONG metric) const {
 	if (metric < 0 || metric > 4) {
 		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::put_WaveformMetric", L"Invalid metric value, must be 0-4", true);
@@ -653,6 +659,23 @@ STDMETHODIMP MyCOM::put_WaveformMetric(LONG metric) const {
 	}
 
 	AudioWizard::Waveform()->SetWaveformMetric(static_cast<AudioWizardWaveform::WaveformMetric>(metric));
+	return S_OK;
+}
+#pragma endregion
+
+
+////////////////////////////////////////////////
+// * MyCOM - PUBLIC API - SYSTEM PROPERTIES * //
+////////////////////////////////////////////////
+#pragma region MyCOM - Public API - System Properties
+STDMETHODIMP MyCOM::put_SystemDebugLog(bool value) const {
+	bool oldValue = AudioWizardSettings::systemDebugLog;
+
+	if (oldValue != value) {
+		AudioWizardSettings::systemDebugLog = value;
+		FB2K_console_formatter() << "Audio Wizard => Debug log " << (value ? "enabled" : "disabled");
+	}
+
 	return S_OK;
 }
 #pragma endregion
@@ -692,12 +715,21 @@ STDMETHODIMP MyCOM::SetFullTrackWaveformCallback(const VARIANT* callback) {
 // * MyCOM - PUBLIC API - FULL-TRACK METHODS * //
 /////////////////////////////////////////////////
 #pragma region MyCOM - Public API - Full-Track Methods
-STDMETHODIMP MyCOM::StartWaveformAnalysis(LONG resolutionMs) const {
+STDMETHODIMP MyCOM::StartWaveformAnalysis(const VARIANT& metadata, LONG pointsPerSec) const {
 	if (!AudioWizard::Waveform()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartWaveformAnalysis", L"AudioWizard::Waveform not available", true);
 	}
 
-	AudioWizard::Waveform()->StartWaveformAnalysis(static_cast<int>(resolutionMs));
+	auto resolution = static_cast<int>(pointsPerSec);
+	metadb_handle_list metadb = AWHCOM::GetMetadbHandlesFromStringArray(metadata);
+
+	if (metadb.get_count() == 0) {
+		static_api_ptr_t<playlist_manager> playlistManager;
+		const t_size playlistIndex = playlistManager->get_active_playlist();
+		playlistManager->playlist_get_selected_items(playlistIndex, metadb);
+	}
+
+	AudioWizard::Waveform()->StartWaveformAnalysis(metadb, resolution);
 	return S_OK;
 }
 
@@ -710,14 +742,109 @@ STDMETHODIMP MyCOM::StopWaveformAnalysis() const {
 	return S_OK;
 }
 
-STDMETHODIMP MyCOM::StartFullTrackAnalysis(LONG chunkDurationMs) const {
+STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, SAFEARRAY** data) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformData", L"AudioWizard::Waveform not available", true);
+	}
+	if (!data) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformData", L"Invalid pointer", true);
+	}
+	if (trackIndex < 0 || trackIndex >= static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount())) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformData", L"Invalid track index", true);
+	}
+
+	AudioWizard::Waveform()->GetWaveformData(static_cast<size_t>(trackIndex), data);
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetWaveformTrackCount(LONG* count) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformTrackCount", L"AudioWizard::Waveform not available", true);
+	}
+	if (!count) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformTrackCount", L"Invalid pointer", true);
+	}
+
+	*count = static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount());
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetWaveformTrackDuration(LONG trackIndex, DOUBLE* duration) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformTrackDuration", L"AudioWizard::Waveform not available", true);
+	}
+	if (!duration) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformTrackDuration", L"Invalid pointer", true);
+	}
+	if (trackIndex < 0 || trackIndex >= static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount())) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformTrackDuration", L"Invalid track index", true);
+	}
+
+	pfc::string8 trackPath;
+	AudioWizard::Waveform()->GetWaveformTrackInfo(static_cast<size_t>(trackIndex), trackPath, *duration);
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetWaveformTrackPath(LONG trackIndex, BSTR* path) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformTrackPath", L"AudioWizard::Waveform not available", true);
+	}
+	if (!path) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformTrackPath", L"Invalid pointer", true);
+	}
+	if (trackIndex < 0 || trackIndex >= static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount())) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformTrackPath", L"Invalid track index", true);
+	}
+
+	pfc::string8 trackPath;
+	double duration;
+	AudioWizard::Waveform()->GetWaveformTrackInfo(static_cast<size_t>(trackIndex), trackPath, duration);
+	*path = SysAllocString(pfc::stringcvt::string_wide_from_utf8(trackPath).get_ptr());
+
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::StartFullTrackAnalysis(const VARIANT& metadata, LONG chunkDurationMs) const {
 	if (!AudioWizard::Main()) {
-		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartFullTrackAnalysis", L"AudioWizard::Main not available", true);
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartFullTrackAnalysis",
+			L"AudioWizard::Main not available", true);
+	}
+
+	metadb_handle_list metadb = AWHCOM::GetMetadbHandlesFromStringArray(metadata);
+
+	// Explicit track lists from JavaScript cannot pass native metadb_handle_ptr across COM boundaries.
+	// Spider Monkey Panel or JSplitter only supports basic types (BSTR, VARIANT arrays, etc.), so the standard foobar2000 pattern
+	// is to serialize handles as "path\u001Fsubsong" strings and recreate them on the C++ side.
+	// Recreation creates new handles without cached metadata > GetMetadataField() would return empty
+	// album/artist until info is loaded. We therefore preload metadata asynchronously when explicit
+	// tracks are provided, ensuring album metric calculations work correctly.
+	if (metadb.get_count() > 0) {
+		static_api_ptr_t<metadb_io_v2> io;
+
+		io->load_info_async(
+			metadb, metadb_io_v2::load_info_default, nullptr,
+			metadb_io_v2::op_flag_background | metadb_io_v2::op_flag_delay_ui | metadb_io_v2::op_flag_no_errors,
+			nullptr
+		);
+	}
+
+	// If no valid explicit tracks were provided, use current selection fallback
+	if (metadb.get_count() == 0) {
+		static_api_ptr_t<playlist_manager> pm;
+		t_size active = pm->get_active_playlist();
+		if (active != pfc_infinite) {
+			pm->playlist_get_selected_items(active, metadb);
+		}
+	}
+
+	if (metadb.get_count() == 0) {
+		FB2K_console_formatter() << "Audio Wizard => StartFullTrackAnalysis: No tracks provided or selected";
+		AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback, false);
+		return S_OK;
 	}
 
 	auto chunkDuration = static_cast<int>(chunkDurationMs);
-
-	AudioWizard::Main()->StartFullTrackAnalysis(chunkDuration);
+	AudioWizard::Main()->StartFullTrackAnalysis(metadb, chunkDuration);
 	return S_OK;
 }
 
@@ -1014,8 +1141,8 @@ STDMETHODIMP MyCOM::GetPureDynamicsAlbumFull(BSTR albumName, double* value) cons
 ////////////////////////////////////////////////
 #pragma region MyCOM - Public API - Real-Time Methods
 STDMETHODIMP MyCOM::SetMonitoringRefreshRate(LONG refreshRateMs) const {
-	if (refreshRateMs < 17 || refreshRateMs > 1000) {
-		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::SetMonitoringRefreshRate", L"Invalid refresh rate, must be 17-1000", false);
+	if (refreshRateMs < 10 || refreshRateMs > 1000) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::SetMonitoringRefreshRate", L"Invalid refresh rate, must be 10-1000", false);
 	}
 	if (!AudioWizard::Main()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::SetMonitoringRefreshRate", L"AudioWizard::Main not available", false);

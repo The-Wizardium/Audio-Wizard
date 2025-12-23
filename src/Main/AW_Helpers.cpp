@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Helpers Source File                        * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -2288,7 +2288,7 @@ namespace AWHCOM {
 
 	void CreateCallback(VARIANT& targetCallback, const VARIANT* newCallback, const char* callbackName) {
 		if (!newCallback) {
-			FB2K_console_formatter() << "Audio Wizard => AudioWizardMain: Set" << callbackName << "Callback failed, callback is null";
+			FB2K_console_formatter() << "Audio Wizard => CreateCallback: Set" << callbackName << "Callback failed, callback is null";
 			return;
 		}
 
@@ -2298,7 +2298,7 @@ namespace AWHCOM {
 
 		HRESULT hr = VariantCopy(&targetCallback, newCallback);
 		if (FAILED(hr)) {
-			FB2K_console_formatter() << "Audio Wizard => AudioWizardMain: VariantCopy failed for " << callbackName << " callback, HRESULT=" << hr;
+			FB2K_console_formatter() << "Audio Wizard => CreateCallback: VariantCopy failed for " << callbackName << " callback, HRESULT=" << hr;
 			return;
 		}
 
@@ -2306,18 +2306,27 @@ namespace AWHCOM {
 			targetCallback.pdispVal->AddRef();
 		}
 		else {
-			FB2K_console_formatter() << "Audio Wizard => AudioWizardMain: " << callbackName << " callback is invalid or empty";
+			FB2K_console_formatter() << "Audio Wizard => CreateCallback: " << callbackName << " callback is invalid or empty";
 		}
 	}
 
-	void FireCallback(const VARIANT& callback, const std::function<void()>& postAction) {
+	void FireCallback(const VARIANT& callback, bool success, const std::function<void()>& postAction) {
 		if (callback.vt == VT_DISPATCH && callback.pdispVal != nullptr) {
-			fb2k::inMainThread([callback, postAction] {
-				DISPPARAMS params = { nullptr, nullptr, 0, 0 };
+			fb2k::inMainThread([callback, success, postAction] {
+				VARIANT arg;
+				arg.vt = VT_BOOL;
+				arg.boolVal = success ? VARIANT_TRUE : VARIANT_FALSE;
+
+				DISPPARAMS params;
+				params.rgvarg = &arg;
+				params.rgdispidNamedArgs = nullptr;
+				params.cArgs = 1;
+				params.cNamedArgs = 0;
+
 				HRESULT hr = callback.pdispVal->Invoke(DISPID_VALUE, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &params, nullptr, nullptr, nullptr);
 
 				if (FAILED(hr)) {
-					FB2K_console_formatter() << "Audio Wizard => ExecuteCallback: Callback invocation failed, HRESULT: " << hr;
+					FB2K_console_formatter() << "Audio Wizard => FireCallback: Callback invocation failed, HRESULT: " << hr;
 				}
 
 				if (postAction) postAction();
@@ -2326,6 +2335,78 @@ namespace AWHCOM {
 		else if (postAction) {
 			fb2k::inMainThread(postAction);
 		}
+	}
+
+	metadb_handle_list GetMetadbHandlesFromStringArray(const VARIANT& metadata) {
+		metadb_handle_list tracks;
+
+		if (metadata.vt != (VT_ARRAY | VT_BSTR) && metadata.vt != (VT_ARRAY | VT_VARIANT)) {
+			return tracks;
+		}
+
+		SAFEARRAY* tracksArray = metadata.parray;
+		if (!tracksArray) {
+			return tracks;
+		}
+
+		long lbound;
+		long ubound;
+		if (FAILED(SafeArrayGetLBound(tracksArray, 1, &lbound)) ||
+			FAILED(SafeArrayGetUBound(tracksArray, 1, &ubound))) {
+			return tracks;
+		}
+
+		long trackCount = ubound - lbound + 1;
+		if (trackCount <= 0) {
+			return tracks;
+		}
+
+		bool isVariant = (metadata.vt == (VT_ARRAY | VT_VARIANT));
+
+		auto addTrackFromBstr = [&](BSTR bstr) {
+			if (!bstr) return;
+
+			pfc::string8 trackInfo(pfc::stringcvt::string_utf8_from_utf16(
+				reinterpret_cast<const char16_t*>(bstr), SysStringLen(bstr)));
+
+			t_size separatorPos = pfc::string_find_first(trackInfo, '\x1F', 0);
+			if (separatorPos == pfc::infinite_size) return;
+
+			pfc::string8 path = trackInfo.subString(0, separatorPos);
+			pfc::string8 subsongStr = trackInfo.subString(separatorPos + 1);
+			auto subsong = pfc::atoui_ex(subsongStr, pfc::infinite_size);
+
+			metadb_handle_ptr handle;
+			static_api_ptr_t<metadb> metadbApi;
+			metadbApi->handle_create(handle, make_playable_location(path, subsong));
+			if (handle.is_valid()) {
+				tracks.add_item(handle);
+			}
+		};
+
+		for (long i = 0; i < trackCount; ++i) {
+			long idx = lbound + i;
+
+			if (!isVariant) {
+				BSTR bstr = nullptr;
+				if (SUCCEEDED(SafeArrayGetElement(tracksArray, &idx, &bstr)) && bstr) {
+					addTrackFromBstr(bstr);
+					SysFreeString(bstr);
+				}
+			}
+			else {
+				VARIANT varTrack;
+				VariantInit(&varTrack);
+				if (SUCCEEDED(SafeArrayGetElement(tracksArray, &idx, &varTrack))) {
+					if (varTrack.vt == VT_BSTR && varTrack.bstrVal) {
+						addTrackFromBstr(varTrack.bstrVal);
+					}
+				}
+				VariantClear(&varTrack);
+			}
+		}
+
+		return tracks;
 	}
 
 	HRESULT GetOptionalLong(const VARIANT* variant, LONG& output) {

@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Full-Track Source File                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -89,17 +89,13 @@ void AudioWizardMainFullTrack::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics)
 		return;
 	}
 
-	metadb_handle_list tracks;
-	static_api_ptr_t<playlist_manager> playlistManager;
-	const t_size playlistIndex = playlistManager->get_active_playlist();
-	playlistManager->playlist_get_selected_items(playlistIndex, tracks);
-
+	const auto& tracks = analysis.lastAnalyzedTracks;
 	const size_t numTracks = tracks.get_count();
 	const size_t metricsPerTrack = 12; // M LUFS, S LUFS, I LUFS, RMS, SP, TP, PSR, PLR, CF, LRA, DR, PD
 	std::vector<float> allMetrics(numTracks * metricsPerTrack, -INFINITY);
 
 	if (numTracks == 0) {
-		FB2K_console_formatter() << "Audio Wizard => GetFullTrackMetrics: No tracks selected";
+		FB2K_console_formatter() << "Audio Wizard => GetFullTrackMetrics: No tracks analyzed";
 		*fullTrackMetrics = AWHCOM::CreateSafeArrayFromData(allMetrics.begin(), allMetrics.end(), "GetFullTrackMetrics");
 		return;
 	}
@@ -111,6 +107,11 @@ void AudioWizardMainFullTrack::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics)
 	}
 
 	int readIndex = analysis.fullTrackIndex.load(std::memory_order_acquire);
+	if (numTracks != analysis.fullTrackData[readIndex].size()) {
+		FB2K_console_formatter() << "Audio Wizard => GetFullTrackMetrics: Mismatch between analyzed tracks count and data size";
+		*fullTrackMetrics = AWHCOM::CreateSafeArrayFromData(allMetrics.begin(), allMetrics.end(), "GetFullTrackMetrics");
+		return;
+	}
 
 	for (t_size i = 0; i < numTracks; ++i) {
 		const auto& data = *analysis.fullTrackData[readIndex][i];
@@ -133,19 +134,19 @@ void AudioWizardMainFullTrack::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics)
 }
 
 void AudioWizardMainFullTrack::SetFullTrackChunkDuration(int chunkDurationMs) {
-	int clampedDuration = std::clamp(chunkDurationMs, Config::MIN_CHUNK_DURATION_MS, Config::MAX_FULL_TRACK_CHUNK_MS);
+	int clampedDuration = std::clamp(chunkDurationMs, Config::MIN_CHUNK_DURATION_MS, Config::MAX_CHUNK_DURATION_MS);
 	monitor.monitorChunkDurationMs.store(clampedDuration, std::memory_order_release);
-	FB2K_console_formatter() << "Audio Wizard => SetFullTrackChunkDuration: " << clampedDuration << "ms";
+	AWHDebug::DebugLog("SetFullTrackChunkDuration: ", clampedDuration, "ms");
 }
 
-void AudioWizardMainFullTrack::StartFullTrackAnalysis(int chunkDurationMs, const metadb_handle_list& tracks) {
+void AudioWizardMainFullTrack::StartFullTrackAnalysis(const metadb_handle_list& tracks, int chunkDurationMs) {
 	if (fetcher.isFullTrackFetching.load(std::memory_order_acquire)) {
-		FB2K_console_formatter() << "Audio Wizard => StartFullTrackAnalysis: Analysis already in progress, skipping.";
+		AWHDebug::DebugLog("StartFullTrackAnalysis: Analysis already in progress, skipping.");
 		return;
 	}
 
 	if (monitor.isFullTrackMetricsActive.load()) {
-		FB2K_console_formatter() << "Audio Wizard => StartFullTrackAnalysis: Analysis active, stopping and restarting.";
+		AWHDebug::DebugLog("StartFullTrackAnalysis: Analysis active, stopping and restarting.");
 		StopFullTrackAnalysis();
 	}
 
@@ -162,6 +163,7 @@ void AudioWizardMainFullTrack::StartFullTrackAnalysis(int chunkDurationMs, const
 	SetFullTrackChunkDuration(chunkDurationMs);
 
 	fetcher.fullTrackFetcherFuture = std::async(std::launch::async, [this, tracks, writeIndex] {
+		bool success = true;
 		try {
 			abort_callback_impl abort;
 			bool fullTrackMetricsActive = monitor.isFullTrackMetricsActive.load();
@@ -174,15 +176,20 @@ void AudioWizardMainFullTrack::StartFullTrackAnalysis(int chunkDurationMs, const
 			if (fullTrackMetricsActive) {
 				analysis.lastAnalyzedTracks = tracks;
 				monitor.isFullTrackMetricsComplete.store(true, std::memory_order_release);
-				AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback);
+				AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback, true);
 				monitor.isFullTrackMetricsActive.store(false, std::memory_order_release);
 			}
 		}
 		catch (const std::exception& e) {
 			FB2K_console_formatter() << "Audio Wizard => Full-track multi-track analysis failed: " << e.what();
 			monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
+			success = false;
 		}
 		fetcher.isFullTrackFetching.store(false, std::memory_order_release);
+
+		if (!success) { // Fire failure for relevant callbacks
+			AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback, false);
+		}
 	});
 }
 
@@ -196,18 +203,82 @@ void AudioWizardMainFullTrack::StopFullTrackAnalysis() {
 	}
 }
 
-void AudioWizardMainFullTrack::StartFullTrackWaveform(int chunkDurationMs, const metadb_handle_ptr& track) {
-	if (monitor.isFullTrackWaveformActive.load()) return;
-
-	if (fetcher.fullTrackFetcherFuture.valid()) {
-		fetcher.fullTrackFetcherFuture.wait();
+void AudioWizardMainFullTrack::StartFullTrackWaveform(const metadb_handle_list& tracks, int chunkDurationMs) {
+	if (tracks.get_count() == 0) {
+		FB2K_console_formatter() << "Audio Wizard => StartFullTrackWaveform: No tracks provided";
+		AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, false);
+		return;
 	}
 
-	fetcher.isFullTrackFetching.store(false, std::memory_order_release);
-	monitor.isFullTrackWaveformActive.store(true, std::memory_order_release);
+	if (monitor.isFullTrackWaveformActive.load()) {
+		AWHDebug::DebugLog("StartFullTrackWaveform: Waveform active, stopping and restarting");
+		StopFullTrackWaveform();
+	}
 
-	SetFullTrackChunkDuration(chunkDurationMs);
-	FullTrackAudioProcessor(track);
+	if (fetcher.isFullTrackFetching.load(std::memory_order_acquire)) {
+		AWHDebug::DebugLog("StartFullTrackWaveform: Fetching already in progress, skipping");
+		return;
+	}
+
+	fetcher.isFullTrackFetching.store(true, std::memory_order_release);
+	monitor.isFullTrackWaveformActive.store(true, std::memory_order_release);
+	monitor.waveformChunkDurationMs.store(chunkDurationMs, std::memory_order_release);
+
+	AWHDebug::DebugLog("StartFullTrackWaveform: Processing ", tracks.get_count(),
+		" tracks at ", chunkDurationMs, "ms chunks");
+
+	// Prepare dummy data structures
+	int writeIndex = (analysis.fullTrackIndex.load(std::memory_order_acquire) + 1) % 2;
+	analysis.fullTrackData[writeIndex].clear();
+	analysis.fullTrackData[writeIndex].reserve(tracks.get_count());
+	for (t_size i = 0; i < tracks.get_count(); ++i) {
+		analysis.fullTrackData[writeIndex].emplace_back(std::make_unique<FullTrackData>());
+	}
+	analysis.fullTrackIndex.store(writeIndex, std::memory_order_release);
+	analysis.lastAnalyzedTracks = tracks;
+
+	fetcher.fullTrackFetcherFuture = std::async(std::launch::async, [this, tracks, writeIndex] {
+		bool success = true;
+		try {
+			abort_callback_impl abort;
+			auto* waveform = AudioWizard::Waveform();
+
+			// Process each track sequentially
+			for (t_size i = 0; i < tracks.get_count(); ++i) {
+				if (!monitor.isFullTrackWaveformActive.load(std::memory_order_acquire)) {
+					AWHDebug::DebugLog("StartFullTrackWaveform: Aborted at track ", i);
+					break;
+				}
+
+				waveform->state.currentTrackIndex.store(i, std::memory_order_release);
+
+				AWHDebug::DebugLog("StartFullTrackWaveform: Processing track ", i, " - ", tracks[i]->get_path());
+
+				// Decode and process this track
+				FullTrackAudioDecoder(tracks[i], *analysis.fullTrackData[writeIndex][i], nullptr, abort, false, true);
+				abort.check();
+			}
+
+			if (monitor.isFullTrackWaveformActive.load(std::memory_order_acquire)) {
+				monitor.isFullTrackMetricsComplete.store(true, std::memory_order_release);
+				AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, true, [] {
+					AudioWizard::Waveform()->StopWaveformAnalysis();
+				});
+				monitor.isFullTrackWaveformActive.store(false, std::memory_order_release);
+			}
+		}
+		catch (const std::exception& e) {
+			FB2K_console_formatter() << "Audio Wizard => Waveform batch failed: " << e.what();
+			success = false;
+		}
+		fetcher.isFullTrackFetching.store(false, std::memory_order_release);
+
+		if (!success) {
+			AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, false, [] {
+					AudioWizard::Waveform()->StopWaveformAnalysis();
+				});
+			}
+		});
 }
 
 void AudioWizardMainFullTrack::StopFullTrackWaveform() {
@@ -237,41 +308,81 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 
 	audio_chunk_impl chunk;
 	ftData.handle = track;
-	double totalFrames = 0.0;
+
+	std::vector<audioType> audioBuffer;
+	unsigned channels = 0;
 	double sampleRate = 0.0;
-	double trackDuration = track->get_length();
+	t_size currentFrames = 0;
+	t_size targetFrames = 0;
+	double totalFrames = 0.0;
 	double processedDuration = 0.0;
+	double trackDuration = track->get_length();
+
+	int chunkDurationMs = monitor.monitorChunkDurationMs.load(std::memory_order_acquire);
+	if (monitor.isFullTrackWaveformActive.load(std::memory_order_acquire)) {
+		chunkDurationMs = monitor.waveformChunkDurationMs.load(std::memory_order_acquire);
+		AWHDebug::DebugLog("FullTrackAudioDecoder: Using waveform-specific duration ", chunkDurationMs, "ms");
+	}
 
 	bool fullTrackMetricsActive = processMetrics && monitor.isFullTrackMetricsActive.load(std::memory_order_acquire);
 	bool fullTrackWaveformActive = processWaveform && monitor.isFullTrackWaveformActive.load(std::memory_order_acquire);
 
-	while (decoder->run(chunk, abort)) {
-		ChunkData data(chunk);
-		totalFrames += data.frames;
-		sampleRate = data.sampleRate;
-		processedDuration += data.frames / sampleRate;
+	auto processChunk = [&](t_size framesToProcess) {
+		if (framesToProcess == 0) return;
 
-		if (fullTrackMetricsActive) {
-			AudioWizardAnalysisFullTrack::ProcessFullTrackChunk(data, ftData);
+		std::vector<audioType> processSamples(
+			audioBuffer.begin(), audioBuffer.begin() + framesToProcess * channels
+		);
+
+		AWHAudioData::ChunkData processData;
+		processData.setOwnedData(std::move(processSamples));
+		processData.channels = channels;
+		processData.frames = framesToProcess;
+		processData.sampleRate = sampleRate;
+
+		totalFrames += processData.frames;
+		processedDuration += processData.frames / sampleRate;
+
+		if (fullTrackMetricsActive || results) {
+			AudioWizardAnalysisFullTrack::ProcessFullTrackChunk(processData, ftData);
 		}
 		if (fullTrackWaveformActive) {
-			AudioWizard::Waveform()->ProcessWaveformMetrics(data);
+			AudioWizard::Waveform()->ProcessWaveformMetrics(processData);
 		}
-		if (results) {
-			AudioWizardAnalysisFullTrack::ProcessFullTrackChunk(data, ftData);
+	};
+
+	while (decoder->run(chunk, abort)) {
+		if (channels == 0) {
+			channels = chunk.get_channels();
+			sampleRate = chunk.get_srate();
+			targetFrames = static_cast<t_size>(sampleRate * (chunkDurationMs / 1000.0));
+			if (targetFrames < 1) targetFrames = 1;
+			audioBuffer.reserve(targetFrames * channels * 2); // Pre-reserve lightly
 		}
 
-		// Update progress bar only for single-track processing
-		if (status && trackDuration > 0 && !analysis.isBatchProcessing.load(std::memory_order_acquire)) {
-			double progress = processedDuration / trackDuration;
-			status->set_progress_float(progress);
-			status->force_update();
-		}
+		const auto* chunkData = chunk.get_data();
+		t_size chunkFrames = chunk.get_sample_count();
+		audioBuffer.insert(audioBuffer.end(), chunkData, chunkData + chunkFrames * channels);
+		currentFrames += chunkFrames;
 
-		abort.check();
+		while (currentFrames >= targetFrames) {
+			processChunk(targetFrames);
+			audioBuffer.erase(audioBuffer.begin(), audioBuffer.begin() + targetFrames * channels);
+			currentFrames -= targetFrames;
+
+			if (status && trackDuration > 0 && !analysis.isBatchProcessing.load(std::memory_order_acquire)) {
+				double progress = processedDuration / trackDuration;
+				status->set_progress_float(progress);
+				status->force_update();
+			}
+			abort.check();
+		}
 	}
 
-	// Process any remaining data in buffers
+	// Drain remainder
+	processChunk(currentFrames);
+
+	// Final processing
 	if (fullTrackMetricsActive || results) {
 		AudioWizardAnalysisFullTrack::ProcessOriginalBlocks(ftData);
 		AudioWizardAnalysisFullTrack::ProcessDynamicsFactors(ftData);
@@ -282,8 +393,7 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 		AudioWizardAnalysisFullTrack::ResetFullTrackData(ftData);
 	}
 
-	FB2K_console_formatter() << "Audio Wizard => ProcessAudioChunks: Completed, duration: "
-		<< (totalFrames / sampleRate) << "s, frames: " << totalFrames;
+	AWHDebug::DebugLog("ProcessAudioChunks: Completed, duration: ", (totalFrames / sampleRate), "s, frames: ", totalFrames);
 }
 
 void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& track, FullTrackResults* results, threaded_process_status* status) {
@@ -305,6 +415,7 @@ void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& 
 		analysis.fullTrackData[writeIndex].emplace_back(std::make_unique<FullTrackData>());
 
 		fetcher.fullTrackFetcherFuture = std::async(std::launch::async, [this, track, writeIndex] {
+			bool success = true;
 			try {
 				abort_callback_impl abort;
 				bool fullTrackMetricsActive = monitor.isFullTrackMetricsActive.load();
@@ -313,7 +424,7 @@ void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& 
 				FullTrackAudioDecoder(track, *analysis.fullTrackData[writeIndex][0], nullptr, abort, fullTrackMetricsActive, fullTrackWaveformActive);
 
 				if (fullTrackWaveformActive) {
-					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, [] {
+					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, true, [] {
 						AudioWizard::Waveform()->StopWaveformAnalysis();
 					});
 					monitor.isFullTrackWaveformActive.store(false, std::memory_order_release);
@@ -323,15 +434,27 @@ void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& 
 					analysis.fullTrackIndex.store(writeIndex, std::memory_order_release);
 					monitor.isFullTrackMetricsComplete.store(true, std::memory_order_release);
 					analysis.lastAnalyzedTrack = track;
-					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback);
+					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback, true);
 					monitor.isFullTrackMetricsActive.store(false, std::memory_order_release);
 				}
 			}
 			catch (const std::exception& e) {
 				FB2K_console_formatter() << "Audio Wizard => Full-track real-time analysis failed: " << e.what();
 				monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
+				success = false;
 			}
 			fetcher.isFullTrackFetching.store(false, std::memory_order_release);
+
+			if (!success) { // Fire failure for relevant callbacks
+				if (monitor.isFullTrackWaveformActive.load()) {
+					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackWaveformCallback, false, [] {
+						AudioWizard::Waveform()->StopWaveformAnalysis();
+					});
+				}
+				if (monitor.isFullTrackMetricsActive.load()) {
+					AWHCOM::FireCallback(AudioWizard::Main()->callbacks.fullTrackAnalysisCallback, false);
+				}
+			}
 		});
 	}
 }

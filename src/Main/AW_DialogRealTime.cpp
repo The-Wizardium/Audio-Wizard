@@ -1,11 +1,11 @@
-/////////////////////////////////////////////////////////////////////////////////
+ï»¿/////////////////////////////////////////////////////////////////////////////////
 // * FB2K Component: Audio Wizard                                            * //
-// * Description:    Audio Wizard Dialog Real-Time Source File               * //
-// * Author:         TT                                                      * //
-// * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
-// * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Description: Â  Â Audio Wizard Dialog Real-Time Source FileÂ  Â  Â  Â  Â  Â  Â  Â * //
+// * Author: Â  Â  Â  Â  TT Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â * //
+// * Website: Â  Â  Â  Â https://github.com/The-Wizardium/Audio-WizardÂ  Â       Â  * //
+// * Version: Â  Â  Â  Â 0.2.0     Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  * //
+// * Dev. started: Â  12-12-2024 Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â * //
+// * Last change: Â  Â 23-12-2025 Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -173,12 +173,14 @@ void AudioWizardDialogRealTime::InitMetrics() {
 					metric.meterBar.ShowWindow(SW_HIDE);
 					break;
 				}
-				case MetricsMode::Meter: {
+				case MetricsMode::Meter:
+				case MetricsMode::MeterAndPeak: {
 					metric.value.ShowWindow(SW_HIDE);
 					metric.meterBar.ShowWindow(SW_SHOW);
 					break;
 				}
-				case MetricsMode::ValueAndMeter: {
+				case MetricsMode::ValueAndMeter:
+				case MetricsMode::ValueAndMeterAndPeak: {
 					metric.value.ShowWindow(SW_SHOW);
 					metric.meterBar.ShowWindow(SW_SHOW);
 					break;
@@ -242,58 +244,183 @@ void AudioWizardDialogRealTime::InitWindowSize() {
 ////////////////////////////////////
 #pragma region Real-Time Dialog - Methods
 void AudioWizardDialogRealTime::DrawMeterBar(DRAWITEMSTRUCT* pDrawItem, double) {
-	HDC hdc = pDrawItem->hDC;
+	HDC hdcDest = pDrawItem->hDC;
 	RECT rc = pDrawItem->rcItem;
-	int width = rc.right - rc.left;
+	const int width = rc.right - rc.left;
+	const int height = rc.bottom - rc.top;
 
-	AWHGraphics::DrawTheRect(hdc, rc, col.meterBgColor, col.meterBorderColor, 1);
+	// 1. Double Buffer Setup
+	AWHGraphics::MemoryDC memDC(hdcDest, width, height);
+	HDC hdc = memDC.GetDC();
+
+	// Draw Background
+	RECT localRc = { 0, 0, width, height };
+	AWHGraphics::DrawTheRect(hdc, localRc, col.meterBgColor, col.meterBorderColor, 1);
 
 	auto it = metricControlValueMap.find(pDrawItem->hwndItem);
-	if (it == metricControlValueMap.end() || !playback_control::get()->is_playing()) return;
-	auto& metric = metrics[it->second];
+	if (it == metricControlValueMap.end() || !playback_control::get()->is_playing()) {
+		BitBlt(hdcDest, rc.left, rc.top, width, height, hdc, 0, 0, SRCCOPY);
+		return;
+	}
 
-	// Calculate interpolated value if animating
+	auto& metric = metrics[it->second];
 	double valueToDraw = metric.currentValue;
+
+	// 2. Animation Logic
 	if (metric.isAnimating) {
 		const ULONGLONG timeCurrent = GetTickCount64();
 		const ULONGLONG timeElapsed = timeCurrent - metric.animationStartTime;
-		const ULONGLONG animationDurationMs = GetMeterBarAnimationDuration();
+		const ULONGLONG refreshRate = AudioWizard::Main()->mainRealTime->monitor.monitorRefreshRateMs.load();
+		const ULONGLONG animationDurationMs = refreshRate * 7ULL;
 
 		if (timeElapsed >= animationDurationMs) {
 			metric.animatedValue = metric.targetValue;
 			metric.isAnimating = false;
 		}
 		else {
-			double animationProgress = std::clamp(static_cast<double>(timeElapsed) / static_cast<double>(animationDurationMs), 0.0, 1.0);
-			animationProgress = AWHMath::CalculateEaseOutCubic(animationProgress); // Apply easing
+			double progress = static_cast<double>(timeElapsed) / static_cast<double>(animationDurationMs);
+			double animationProgress = AWHMath::CalculateEaseOutCubic(std::clamp(progress, 0.0, 1.0));
 			metric.animatedValue = metric.currentValue + (metric.targetValue - metric.currentValue) * animationProgress;
 		}
+
 		valueToDraw = metric.animatedValue;
 	}
 
-	double clampedValue = std::max(metric.minVal, std::min(metric.maxVal, valueToDraw));
-	double percentage = (clampedValue - metric.minVal) / (metric.maxVal - metric.minVal);
-	if (percentage <= 0) return;
+	// 3. Percentage Calculation
+	const double percentage = (std::clamp(
+		valueToDraw, metric.minVal, metric.maxVal) - metric.minVal) / (metric.maxVal - metric.minVal
+	);
 
-	auto fillWidth = static_cast<int>(percentage * width);
-	RECT fillRect = { rc.left, rc.top, rc.left + fillWidth, rc.bottom };
-	AWHGraphics::DrawTheRect(hdc, fillRect, metric.currentColor, 0, 0);
+	// 4. Main Level Bar
+	if (percentage > 0) {
+		const auto fillWidth = static_cast<int>(percentage * width);
+		RECT fillRect = { 0, 0, fillWidth, height };
+		AWHGraphics::DrawTheRect(hdc, fillRect, metric.currentColor, 0, 0);
+	}
+
+	// 5. Peak Effect
+	if (AudioWizardSettings::monitorDisplayMetricsMode == 2 || AudioWizardSettings::monitorDisplayMetricsMode == 4) {
+		DrawMeterBarPeak(hdc, localRc, metric, percentage);
+	}
+
+	// 6. Blit to screen
+	BitBlt(hdcDest, rc.left, rc.top, width, height, hdc, 0, 0, SRCCOPY);
 }
 
-ULONGLONG AudioWizardDialogRealTime::GetMeterBarAnimationDuration() const {
-	constexpr int TARGET_FRAMES = 7;
-	return AudioWizard::Main()->mainRealTime->monitor.monitorRefreshRateMs.load() * TARGET_FRAMES;
-}
+void AudioWizardDialogRealTime::DrawMeterBarPeak(HDC hdc, const RECT& rc, const MetricControl& metric, double percentage) const {
+	const ULONGLONG currentTime = GetTickCount64();
+	const ULONGLONG peakAge = currentTime - metric.peakTimestamp;
+	if (peakAge >= 1200 || metric.peakValue <= metric.minVal) return;
 
-double AudioWizardDialogRealTime::GetMeterBarUpdateThreshold() const {
-	return AudioWizard::Main()->mainRealTime->monitor.monitorRefreshRateMs.load() <= 33 ? 0.002 : 0.005;
-}
+	// 1. Physics
+	constexpr ULONGLONG HOLD_TIME = 450;
+	double visualPeakValue = metric.peakValue;
 
-double AudioWizardDialogRealTime::GetMetricValueUpdateThreshold() const {
-	int refreshRateMs = AudioWizard::Main()->mainRealTime->monitor.monitorRefreshRateMs.load();
-	if (refreshRateMs <= 33) return 0.005; // High refresh rate
-	if (refreshRateMs <= 66) return 0.01;  // Standard refresh rate
-	return 0.02;                           // Low refresh rate
+	if (peakAge > HOLD_TIME) {
+		double fallTime = static_cast<double>(peakAge - HOLD_TIME) / 1000.0;
+		visualPeakValue -= (35.0 * fallTime * fallTime);
+	}
+
+	const int width = rc.right - rc.left;
+	const int height = rc.bottom - rc.top;
+	const bool isDark = AudioWizardDialog::darkMode;
+
+	double peakPercentage = (std::max(
+		metric.minVal, visualPeakValue) - metric.minVal) / (metric.maxVal - metric.minVal
+	);
+	auto levelEndX = static_cast<int>(percentage * width);
+	auto peakX = static_cast<int>(peakPercentage * width);
+
+	if (peakX <= levelEndX + 3) return;
+
+	const COLORREF bg = col.meterBgColor;
+	const auto mR = GetRValue(metric.currentColor);
+	const auto mG = GetGValue(metric.currentColor);
+	const auto mB = GetBValue(metric.currentColor);
+
+	// 2. Plasma Trail
+	double trailVisibility = std::pow(std::clamp(1.0 - (double)peakAge / 350.0, 0.0, 1.0), 0.45);
+	auto trailLength = static_cast<int>(140 * trailVisibility);
+	int trailStartX = peakX - 3;
+
+	for (int i = 0; i < trailLength; ++i) {
+		int drawX = trailStartX - i;
+		if (drawX <= levelEndX) break;
+
+		double pos = (double)i / trailLength;
+		double intensity = std::pow(1.0 - pos, 1.65) * trailVisibility;
+		if (intensity < 0.015) continue;
+
+		int r;
+		int g;
+		int b;
+
+		if (isDark) {
+			auto boost = static_cast<int>(90 * (1.0 - pos));
+			r = std::min(255, mR + boost);
+			g = std::min(255, mG + boost + 20);
+			b = std::min(255, mB + boost + 60);
+
+			if (pos < 0.25) {
+				r = std::min(255, r + (int)((1.0 - pos * 4.0) * intensity * 66));
+				g = std::min(255, g + (int)((1.0 - pos * 4.0) * intensity * 78));
+				b = 255;
+			}
+		}
+		else {
+			auto deepen = static_cast<int>(40 * (1.0 - pos));
+			r = std::max(0, mR - (deepen / 2));
+			g = std::max(0, mG - (deepen / 3));
+			b = std::min(255, mB + 20);
+			if (pos < 0.25) { r = std::max(0, r - 30); g = std::max(0, g - 20); }
+		}
+
+		COLORREF colLine = AWHGraphics::ColorBlend(RGB(r, g, b), bg, (int)(intensity * 255));
+		for (int y = 0; y < height; ++y) {
+			SetPixelV(hdc, drawX, y, colLine);
+		}
+	}
+
+	// 3. Bullet
+	auto bulletAlpha = (int)(std::pow(1.0 - (double)peakAge / 1200.0, 0.28) * 255);
+	int midY = height / 2;
+
+	for (int y = 0; y < height; ++y) {
+		double centerDist = std::abs(y - midY) / (height * 0.5);
+		double brightBoost = (1.0 - centerDist) * 70;
+		int r;
+		int g;
+		int b;
+
+		if (isDark) {
+			r = std::min(255, mR + 130 + (int)brightBoost);
+			g = std::min(255, mG + 160 + (int)brightBoost + 25);
+			b = 255;
+		}
+		else {
+			r = std::max(0, mR - 40 - (int)brightBoost);
+			g = std::max(0, mG - 20);
+			b = std::max(0, mB - 10);
+		}
+
+		COLORREF colPixel = AWHGraphics::ColorBlend(RGB(r, g, b), bg, bulletAlpha);
+		SetPixelV(hdc, peakX - 3, y, colPixel);
+		SetPixelV(hdc, peakX - 2, y, colPixel);
+		SetPixelV(hdc, peakX - 1, y, colPixel);
+	}
+
+	// 4. White-Hot Flash
+	if (peakAge < 300) {
+		const double flashProgress = 1.0 - (static_cast<double>(peakAge) / 300.0);
+		const auto flashAlpha = static_cast<int>(flashProgress * 255);
+		const COLORREF whiteCore = AWHGraphics::ColorBlend(RGB(255, 255, 255), bg, flashAlpha);
+		const int startY = height / 4;
+		const int endY = (height * 3) / 4;
+
+		for (int y = startY; y < endY; ++y) {
+			SetPixelV(hdc, peakX - 2, y, whiteCore);
+		}
+	}
 }
 
 std::pair<double, double> AudioWizardDialogRealTime::GetDisplayRange(MetricId metricId) const {
@@ -374,7 +501,8 @@ void AudioWizardDialogRealTime::SetMetrics(const CRect& clientRect, HDWP hdwp) c
 	const int columnWidth = (clientWidth - 2 * margin - columnSpacing) / 2;
 
 	// Calculate meter dimensions
-	const bool isMeterMode1 = AudioWizardSettings::monitorDisplayMetricsMode == 1;
+	const int mode = AudioWizardSettings::monitorDisplayMetricsMode;
+	const bool isMeterMode1 = mode == 1 || mode == 2;
 	const int meterBarHeight = isMeterMode1
 		? static_cast<int>(ui.valueHeight * 0.5)
 		: static_cast<int>(ui.valueHeight * 0.25);
@@ -425,7 +553,8 @@ void AudioWizardDialogRealTime::SetMetrics(const CRect& clientRect, HDWP hdwp) c
 						SWP_NOZORDER | SWP_NOACTIVATE);
 					break;
 				}
-				case 1: { // Meter bar only mode
+				case 1:
+				case 2: { // Meter bar only mode
 					const int labelBaselineY = y + (ui.valueHeight + ui.labelHeight) / 2;
 					::DeferWindowPos(hdwp, metric.meterBar.m_hWnd, nullptr,
 						valueX, labelBaselineY - static_cast<int>(meterBarHeight * 1.5),
@@ -433,7 +562,8 @@ void AudioWizardDialogRealTime::SetMetrics(const CRect& clientRect, HDWP hdwp) c
 						SWP_NOZORDER | SWP_NOACTIVATE);
 					break;
 				}
-				case 2: { // Metrics value and meter bar mode
+				case 3:
+				case 4: { // Metrics value and meter bar mode
 					::DeferWindowPos(hdwp, metric.value.m_hWnd, nullptr,
 						valueX, contentY, valueWidth, ui.valueHeight,
 						SWP_NOZORDER | SWP_NOACTIVATE);
@@ -458,32 +588,38 @@ void AudioWizardDialogRealTime::UpdateMetrics() {
 
 	struct MetricGetter {
 		void (AudioWizardMain::* getter)(double*) const;
-		double valueThresholdMultiplier;
-		double meterThresholdMultiplier;
+		const char* name;
+		bool isPeakHold;
+		std::atomic<double> AudioWizardMainRealTime::Metrics::* atomicPtr;
 	};
 
 	static const std::unordered_map<MetricId, MetricGetter> metricGetters = {
-		{ MOMENTARY_LUFS_RT,    { &AudioWizardMain::GetMomentaryLUFS,    1.0, 1.0 }},
-		{ SHORT_TERM_LUFS_RT,   { &AudioWizardMain::GetShortTermLUFS,    1.0, 1.0 }},
-		{ LEFT_RMS_RT,          { &AudioWizardMain::GetLeftRMS,          1.0, 1.0 }},
-		{ RIGHT_RMS_RT,         { &AudioWizardMain::GetRightRMS,         1.0, 1.0 }},
-		{ LEFT_SAMPLE_PEAK_RT,  { &AudioWizardMain::GetLeftSamplePeak,   1.0, 1.0 }},
-		{ RIGHT_SAMPLE_PEAK_RT, { &AudioWizardMain::GetRightSamplePeak,  1.0, 1.0 }},
-		{ TRUE_PEAK_RT,         { &AudioWizardMain::GetTruePeak,         1.0, 1.0 }},
-		{ PSR_RT,               { &AudioWizardMain::GetPSR,              2.0, 2.0 }},
-		{ PLR_RT,               { &AudioWizardMain::GetPLR,              2.0, 2.0 }},
-		{ CREST_FACTOR_RT,      { &AudioWizardMain::GetCrestFactor,      1.0, 1.0 }},
-		{ DYNAMIC_RANGE_RT,     { &AudioWizardMain::GetDynamicRange,     1.0, 1.0 }},
-		{ PURE_DYNAMICS_RT,     { &AudioWizardMain::GetPureDynamics,     1.0, 1.0 }},
-		{ PHASE_CORRELATION_RT, { &AudioWizardMain::GetPhaseCorrelation, 8.0, 8.0 }},
-		{ STEREO_WIDTH_RT,      { &AudioWizardMain::GetStereoWidth,      8.0, 8.0 }},
+		{ MOMENTARY_LUFS_RT,    { &AudioWizardMain::GetMomentaryLUFS,    "Momentary LUFS",    false, nullptr } },
+		{ SHORT_TERM_LUFS_RT,   { &AudioWizardMain::GetShortTermLUFS,    "Short Term LUFS",   false, nullptr } },
+		{ LEFT_RMS_RT,          { &AudioWizardMain::GetLeftRMS,          "Left RMS",          true,  &AudioWizardMainRealTime::Metrics::leftRMS } },
+		{ RIGHT_RMS_RT,         { &AudioWizardMain::GetRightRMS,         "Right RMS",         true,  &AudioWizardMainRealTime::Metrics::rightRMS } },
+		{ LEFT_SAMPLE_PEAK_RT,  { &AudioWizardMain::GetLeftSamplePeak,   "Left Sample Peak",  true,  &AudioWizardMainRealTime::Metrics::leftSamplePeak } },
+		{ RIGHT_SAMPLE_PEAK_RT, { &AudioWizardMain::GetRightSamplePeak,  "Right Sample Peak", true,  &AudioWizardMainRealTime::Metrics::rightSamplePeak } },
+		{ TRUE_PEAK_RT,         { &AudioWizardMain::GetTruePeak,         "True Peak",         true,  &AudioWizardMainRealTime::Metrics::truePeak } },
+		{ PSR_RT,               { &AudioWizardMain::GetPSR,              "PSR",               false, &AudioWizardMainRealTime::Metrics::PSR } },
+		{ PLR_RT,               { &AudioWizardMain::GetPLR,              "PLR",               false, &AudioWizardMainRealTime::Metrics::PLR } },
+		{ CREST_FACTOR_RT,      { &AudioWizardMain::GetCrestFactor,      "Crest Factor",      false, &AudioWizardMainRealTime::Metrics::crestFactor } },
+		{ DYNAMIC_RANGE_RT,     { &AudioWizardMain::GetDynamicRange,     "Dynamic Range",     false, nullptr } },
+		{ PURE_DYNAMICS_RT,     { &AudioWizardMain::GetPureDynamics,     "Pure Dynamics",     false, nullptr } },
+		{ PHASE_CORRELATION_RT, { &AudioWizardMain::GetPhaseCorrelation, "Phase Correlation", false, nullptr } },
+		{ STEREO_WIDTH_RT,      { &AudioWizardMain::GetStereoWidth,      "Stereo Width",      false, nullptr } },
 	};
 
 	const int mode = AudioWizardSettings::monitorDisplayMetricsMode;
-	const bool updateValue = (mode != 1);
+	const bool updateValue = (mode == 0 || mode == 3 || mode == 4);
 	const bool updateMeter = (mode != 0);
-	const double metricValueThresholdBase = GetMetricValueUpdateThreshold();
-	const double meterThresholdBase = GetMeterBarUpdateThreshold();
+
+	constexpr ULONGLONG PEAK_HOLD_MS = 1000;
+	const ULONGLONG currentTime = GetTickCount64();
+	const double decaySpeedMs = 500.0;
+	const double decayFactor = static_cast<double>(
+		AudioWizard::Main()->mainRealTime->monitor.monitorRefreshRateMs.load()
+	) / decaySpeedMs;
 
 	for (auto& metric : metrics) {
 		if (!metric.isDisplayed) continue;
@@ -492,35 +628,57 @@ void AudioWizardDialogRealTime::UpdateMetrics() {
 		if (it == metricGetters.end()) continue;
 
 		const auto& getter = it->second;
-		double val = 0.0;
-		(AudioWizard::Main()->*getter.getter)(&val);
+		double incomingVal = -INFINITY;
 
-		const double metricValueThreshold = metricValueThresholdBase * getter.valueThresholdMultiplier;
-		if (std::abs(val - metric.previousValue) < metricValueThreshold) {
-			metric.currentValue = val;
-			continue;
+		// 1. FETCH & RESET (Latch)
+		if (getter.isPeakHold && getter.atomicPtr) {
+			auto& atomicMetric = AudioWizard::Main()->mainRealTime->metrics.*(getter.atomicPtr);
+			incomingVal = atomicMetric.exchange(-INFINITY, std::memory_order_acq_rel);
+		}
+		else {
+			(AudioWizard::Main()->*getter.getter)(&incomingVal);
 		}
 
-		// Update metric state
-		metric.previousValue = metric.currentValue;
-		metric.currentValue = val;
-		metric.targetValue = val;
-		metric.animatedValue = val;
-		metric.animationStartTime = GetTickCount64();
-		metric.isAnimating = true;
+		if (incomingVal == -INFINITY) incomingVal = -150.0;
 
-		// Update displayed value
-		if (updateValue) {
-			wchar_t textBuffer[16];
-			swprintf_s(textBuffer, L"%+.1f", val);
-			metric.value.SetWindowTextW(textBuffer);
+		// 2. PEAK HOLD LOGIC
+		if (incomingVal > -140.0 && (incomingVal >= metric.peakValue || (currentTime - metric.peakTimestamp) > PEAK_HOLD_MS)) {
+			metric.peakValue = incomingVal;
+			metric.peakTimestamp = currentTime;
+		}
+		else if ((currentTime - metric.peakTimestamp) > PEAK_HOLD_MS) {
+			metric.peakValue = metric.minVal;
 		}
 
-		// Update meter bar
-		if (updateMeter) {
-			const double range = metric.maxVal - metric.minVal;
-			const double meterThreshold = meterThresholdBase * getter.meterThresholdMultiplier;
-			if (range != 0.0 && (metric.colorChanged || std::abs((val - metric.previousValue) / range) >= meterThreshold)) {
+		// 3. SNAPPY BAR BALLISTICS
+		double nextVisualValue = metric.currentValue;
+
+		if (incomingVal >= metric.currentValue) { // Instant Attack
+			nextVisualValue = incomingVal;
+		}
+		else { // Fast Linear Decay
+			double range = std::abs(metric.maxVal - metric.minVal);
+			nextVisualValue -= (range * decayFactor);
+			if (nextVisualValue < incomingVal) nextVisualValue = incomingVal;
+		}
+
+		if (nextVisualValue < metric.minVal) nextVisualValue = metric.minVal;
+
+		// 4. UI UPDATE
+		if (std::abs(nextVisualValue - metric.currentValue) > 0.001) {
+			metric.previousValue = metric.currentValue;
+			metric.currentValue = nextVisualValue;
+
+			// Sync animation vars
+			metric.targetValue = nextVisualValue;
+			metric.animatedValue = nextVisualValue;
+
+			if (updateValue) {
+				std::array<wchar_t, 16> textBuffer{};
+				swprintf_s(textBuffer.data(), textBuffer.size(), L"%+.1f", nextVisualValue);
+				metric.value.SetWindowTextW(textBuffer.data());
+			}
+			if (updateMeter) {
 				metric.meterBar.Invalidate();
 			}
 		}
@@ -853,7 +1011,8 @@ void AudioWizardDialogRealTime::SaveLog() {
 	std::array<COMDLG_FILTERSPEC, 3> fileTypes = {
 		{ { L"Text Files", L"*.txt" }, { L"CSV Files", L"*.csv" }, { L"All Files", L"*.*" } }
 	};
-	pFileDialog->SetFileTypes(static_cast<UINT>(fileTypes.size()), fileTypes.data());
+	const UINT fileTypeCount = static_cast<UINT>(fileTypes.size());
+	pFileDialog->SetFileTypes(fileTypeCount, fileTypes.data());
 	pFileDialog->SetDefaultExtension(L"txt");
 
 	if (FAILED(pFileDialog->Show(nullptr))) return;
@@ -1048,12 +1207,7 @@ void AudioWizardDialogRealTime::OnSize(UINT, CSize) {
 }
 
 void AudioWizardDialogRealTime::OnTimer(UINT_PTR id) {
-	if (id == 1) {
-		UpdateMetrics();
-		UpdateColors();
-		UpdateLogging();
-	}
-	else if (id == 2) {
+	if (id == 2) {
 		InitWindowTitle();
 	}
 }
@@ -1147,6 +1301,18 @@ void AudioWizardDialogRealTime::OnNcDestroy() {
 	std::unique_ptr<AudioWizardDialogRealTime>(
 		reinterpret_cast<AudioWizardDialogRealTime*>(GetWindowLongPtr(GWLP_USERDATA))
 	);
+}
+
+LRESULT AudioWizardDialogRealTime::OnUpdateMetrics(UINT, WPARAM, LPARAM, BOOL) {
+	if (AudioWizard::Main()) {
+		AudioWizard::Main()->mainRealTime->monitor.isUIMessagePending.store(false, std::memory_order_release);
+	}
+
+	UpdateMetrics();
+	UpdateColors();
+	UpdateLogging();
+
+	return 0;
 }
 
 LRESULT AudioWizardDialogRealTime::OnRefreshRateChanged(UINT, WPARAM, LPARAM, BOOL) {

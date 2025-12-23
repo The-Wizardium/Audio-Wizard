@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Source File                                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -19,7 +19,7 @@
 /////////////////////////
 #pragma region Component Setup
 DECLARE_COMPONENT_VERSION(
-	"Audio Wizard", "0.1.0",
+	"Audio Wizard", "0.2.0",
 
 	"Audio Wizard \n"
 	"The Ruby Spell Of Sonic Mastery \n"

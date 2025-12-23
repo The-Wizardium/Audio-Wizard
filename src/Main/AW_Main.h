@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Header File                           * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -53,9 +53,9 @@ public:
 	void SetFullTrackWaveformCallback(const VARIANT* callback);
 
 	// * PUBLIC API - FULL-TRACK ANALYSIS CONTROL * //
-	void StartFullTrackAnalysis(int chunkDurationMs);
+	void StartFullTrackAnalysis(const metadb_handle_list& metadata, int chunkDurationMs);
 	void StopFullTrackAnalysis();
-	void StartFullTrackWaveform(int chunkDurationMs);
+	void StartFullTrackWaveform(const metadb_handle_list& metadata, int chunkDurationMs);
 	void StopFullTrackWaveform();
 	void StopFullTrackAudioProcessor();
 

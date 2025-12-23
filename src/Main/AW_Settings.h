@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Settings Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -87,6 +87,8 @@ public:
 	static constexpr GUID guid_monitorDisplayMetricsMode = { 0x4021f07e, 0xce1f, 0x40bd, { 0xac, 0xbd, 0x66, 0xec, 0x8f, 0xdf, 0x9f, 0x2b } };
 	static constexpr GUID guid_monitorDisplayRefreshRate = { 0x2d86e9f8, 0x28b3, 0x42dd, { 0xb1, 0xb3, 0x2, 0x11, 0xe, 0x49, 0xdd, 0xb8 } };
 
+	static constexpr GUID guid_systemDebugLog = { 0x20d9e4ee, 0xc4ee, 0x4b29, { 0x80, 0xc7, 0x6d, 0x8c, 0x26, 0x17, 0x61, 0x0 } };
+
 	// * STATIC MEMBER DEFAULTS * //
 	static constexpr bool analysisDisplayColorsDefault = true;
 	static constexpr bool analysisDisplayTooltipsDefault = true;
@@ -153,8 +155,10 @@ public:
 	static constexpr bool monitorDisplayPureDynamicsDefault = true;
 	static constexpr bool monitorDisplayPhaseCorrelationDefault = true;
 	static constexpr bool monitorDisplayStereoWidthDefault = true;
-	static constexpr int monitorDisplayMetricsModeDefault = 2;
+	static constexpr int monitorDisplayMetricsModeDefault = 4;
 	static constexpr int monitorDisplayRefreshRateDefault = 33;
+
+	static constexpr bool systemDebugLogDefault = false;
 
 	// * STATIC MEMBERS * //
 	static inline cfg_bool analysisDisplayColors{ guid_analysisDisplayColors, analysisDisplayColorsDefault };
@@ -224,6 +228,8 @@ public:
 	static inline cfg_bool monitorDisplayStereoWidth{ guid_monitorDisplayStereoWidth, monitorDisplayStereoWidthDefault };
 	static inline cfg_int monitorDisplayMetricsMode{ guid_monitorDisplayMetricsMode, monitorDisplayMetricsModeDefault };
 	static inline cfg_int monitorDisplayRefreshRate{ guid_monitorDisplayRefreshRate, monitorDisplayRefreshRateDefault };
+
+	static inline cfg_bool systemDebugLog{ guid_systemDebugLog, systemDebugLogDefault };
 
 	// * STATIC METHODS * //
 	static void InitAnalysisSettings(HWND hWnd);

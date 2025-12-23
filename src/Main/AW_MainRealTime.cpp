@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Real-Time Source File                 * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -74,8 +74,9 @@ void AudioWizardMainRealTime::StartRealTimeMonitoring(int refreshRateMs, int chu
 	monitor.wasPeakmeterActiveBefore.store(monitor.isPeakmeterActive.load(), std::memory_order_release);
 	monitor.isRealTimeActive.store(true, std::memory_order_release);
 	monitor.isPeakmeterActive.store(false, std::memory_order_release);
+	monitor.isUIMessagePending.store(false, std::memory_order_release);
 
-	SetMonitoringRefreshRate(std::max(refreshRateMs, 17));
+	SetMonitoringRefreshRate(refreshRateMs);
 	SetMonitoringChunkDuration(chunkDurationMs);
 	StartRealTimeAudioProcessor(refreshRateMs);
 }
@@ -86,6 +87,7 @@ void AudioWizardMainRealTime::StopRealTimeMonitoring() {
 	monitor.isRealTimeActive.store(false, std::memory_order_release);
 	monitor.isPeakmeterActive.store(monitor.wasPeakmeterActiveBefore.load(), std::memory_order_release);
 	monitor.wasPeakmeterActiveBefore.store(false, std::memory_order_release);
+	monitor.isUIMessagePending.store(false, std::memory_order_release);
 
 	if (!IsRealTimeAudioProcessorActive()) {
 		StopRealTimeAudioProcessor();
@@ -96,7 +98,7 @@ void AudioWizardMainRealTime::StartPeakmeterMonitoring(int refreshRateMs, int ch
 	if (monitor.isPeakmeterActive.load()) return;
 
 	monitor.isPeakmeterActive.store(true, std::memory_order_release);
-	SetMonitoringRefreshRate(std::max(refreshRateMs, 17));
+	SetMonitoringRefreshRate(refreshRateMs);
 	SetMonitoringChunkDuration(chunkDurationMs);
 
 	StartRealTimeAudioProcessor(refreshRateMs);
@@ -166,66 +168,93 @@ void AudioWizardMainRealTime::GetRawAudioData(SAFEARRAY** data) const {
 ////////////////////////////////////////////
 #pragma region Private Real-Time Audio Processing
 void AudioWizardMainRealTime::RealTimeAudioProcessor() {
-	auto nextFetchTime = std::chrono::steady_clock::now();
-	static auto lastNotify = std::chrono::steady_clock::now();
-	int lastChunkDurationMs = 0;
-	int lastRefreshRateMs = 0;
-	double chunkDurationSec = 0.0;
-	double currentTime = 0.0;
+	bool initialized = false;
 
-	auto shouldUpdate = [](const auto& now, const std::atomic<int64_t>& lastUpdate, int refreshRateMs) {
-		auto last = std::chrono::steady_clock::time_point(
-			std::chrono::nanoseconds(lastUpdate.load(std::memory_order_acquire))
-		);
-		return (now - last) >= std::chrono::milliseconds(refreshRateMs);
-	};
+	double nextFetchTime = 0.0;
+	double chunkDurationSec = 0.0;
+	int lastChunkMs = 0;
+	int lastRefreshMs = 0;
+
+	auto lastNotify = std::chrono::steady_clock::now();
+	auto nextWakeup = lastNotify;
 
 	while (monitor.isFetching.load(std::memory_order_acquire)) {
-		const int chunkDurationMs = monitor.monitorChunkDurationMs.load(std::memory_order_acquire);
-		const int refreshRateMs = monitor.monitorRefreshRateMs.load(std::memory_order_acquire);
+		double currTime = 0.0;
+		const int chunkMs = monitor.monitorChunkDurationMs.load(std::memory_order_relaxed);
+		const int refreshMs = monitor.monitorRefreshRateMs.load(std::memory_order_relaxed);
 
-		if (chunkDurationMs != lastChunkDurationMs || refreshRateMs != lastRefreshRateMs) {
-			lastChunkDurationMs = chunkDurationMs;
-			lastRefreshRateMs = refreshRateMs;
-			chunkDurationSec = AWHConvert::MsToSec(chunkDurationMs);
+		// 1. Update Timing Configuration
+		if (chunkMs != lastChunkMs || refreshMs != lastRefreshMs) {
+			lastChunkMs = chunkMs;
+			lastRefreshMs = refreshMs;
+			chunkDurationSec = AWHConvert::MsToSec(chunkMs);
 
 			if (monitor.isRealTimeActive || monitor.isPeakmeterActive) {
-				chunkDurationSec = std::min(chunkDurationSec, AWHConvert::MsToSec(refreshRateMs));
+				chunkDurationSec = std::min(chunkDurationSec, AWHConvert::MsToSec(refreshMs));
 			}
 		}
 
+		// 2. Validate Stream
+		if (!visStream.is_valid() || !visStream->get_absolute_time(currTime)) {
+			initialized = false;
+			std::this_thread::sleep_for(std::chrono::milliseconds(refreshMs));
+			continue;
+		}
+
+		// 3. Synchronization & Discontinuity
+		if (!initialized || std::abs(currTime - nextFetchTime) > Config::DISCONTINUITY_THRESHOLD) {
+			nextFetchTime = currTime;
+			initialized = true;
+		}
+
+		// 4. Sequential Fetching
 		AWHAudioData::Chunk chunk;
-		chunk.metadata.isValid = visStream.is_valid() &&
-			visStream->get_absolute_time(currentTime) &&
-			visStream->get_chunk_absolute(*chunk.chunk, currentTime, chunkDurationSec);
 
-		if (chunk.metadata.isValid) {
+		for (int i = 0; i < Config::MAX_CATCHUP_CHUNKS && nextFetchTime < currTime
+			&& monitor.isFetching.load(std::memory_order_relaxed); ++i) {
+
+			if (!visStream->get_chunk_absolute(*chunk.chunk, nextFetchTime, chunkDurationSec)) {
+				break;
+			}
+
+			chunk.metadata.timestamp.store(nextFetchTime, std::memory_order_release);
 			ChunkData data(*chunk.chunk);
-			const auto now = std::chrono::steady_clock::now();
-			chunk.metadata.timestamp.store(currentTime, std::memory_order_release);
 
-			if (monitor.isRawAudioDataActive) {
-				ProcessRawAudioDataCapture(data);
-			}
+			if (monitor.isRawAudioDataActive) ProcessRawAudioDataCapture(data);
 
-			if (monitor.isRealTimeActive && shouldUpdate(now, monitor.lastRealtimeUpdate, refreshRateMs)) {
+			if (monitor.isRealTimeActive) {
 				ProcessRealTimeMetrics(data);
-				monitor.lastRealtimeUpdate.store(now.time_since_epoch().count(), std::memory_order_release);
+				monitor.lastRealtimeUpdate.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_release);
 			}
-			else if (monitor.isPeakmeterActive && shouldUpdate(now, monitor.lastMonitoringUpdate, refreshRateMs)) {
+			else if (monitor.isPeakmeterActive) {
 				ProcessPeakmeterMetrics(data);
-				monitor.lastMonitoringUpdate.store(now.time_since_epoch().count(), std::memory_order_release);
+				monitor.lastMonitoringUpdate.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_release);
 			}
 
-			if (const HWND hWnd = realTimeDialogHwnd.load(std::memory_order_acquire);
-				hWnd && (now - lastNotify >= std::chrono::milliseconds(Config::UI_NOTIFICATION_INTERVAL_MS))) {
-				::PostMessage(hWnd, Config::WM_UPDATE_METRICS, 0, 0);
-				lastNotify = now;
+			nextFetchTime += chunkDurationSec;
+		}
+
+		// 5. UI Notification - only notify UI when new data was actually processed this iteration
+		const auto now = std::chrono::steady_clock::now();
+		const HWND hWnd = realTimeDialogHwnd.load(std::memory_order_acquire);
+		const int dynamicInterval = std::clamp(refreshMs, Config::MIN_REFRESH_UI_MS, Config::MAX_REFRESH_UI_MS);
+
+		if (hWnd && (now - lastNotify >= std::chrono::milliseconds(dynamicInterval))) {
+			bool expected = false;
+			if (monitor.isUIMessagePending.compare_exchange_strong(expected, true,
+				std::memory_order_acq_rel)) {
+				if (::PostMessage(hWnd, Config::WM_UPDATE_METRICS, 0, 0)) {
+					lastNotify = now;
+				}
+				else {
+					monitor.isUIMessagePending.store(false, std::memory_order_release);
+				}
 			}
 		}
 
-		nextFetchTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(refreshRateMs);
-		std::this_thread::sleep_until(nextFetchTime);
+		// 6. Precision Sleep
+		nextWakeup = std::max(now, nextWakeup + std::chrono::milliseconds(refreshMs));
+		std::this_thread::sleep_until(nextWakeup);
 	}
 }
 
@@ -265,21 +294,26 @@ bool AudioWizardMainRealTime::IsRealTimeAudioProcessorActive() const {
 void AudioWizardMainRealTime::ProcessRealTimeMetrics(const ChunkData& data) {
 	AudioWizardAnalysisRealTime::ProcessRealtimeChunk(data, analysis.realTimeData);
 
-	metrics.momentaryLUFS.store(analysis.realTimeData.momentaryLUFS);
-	metrics.shortTermLUFS.store(analysis.realTimeData.shortTermLUFS);
-	metrics.RMS.store(analysis.realTimeData.RMS);
-	metrics.leftRMS.store(analysis.realTimeData.leftRMS);
-	metrics.rightRMS.store(analysis.realTimeData.rightRMS);
-	metrics.leftSamplePeak.store(analysis.realTimeData.leftSamplePeak);
-	metrics.rightSamplePeak.store(analysis.realTimeData.rightSamplePeak);
-	metrics.truePeak.store(analysis.realTimeData.truePeak);
-	metrics.PSR.store(analysis.realTimeData.PSR);
-	metrics.PLR.store(analysis.realTimeData.PLR);
-	metrics.crestFactor.store(analysis.realTimeData.crestFactor);
-	metrics.DR.store(analysis.realTimeData.dynamicRange);
-	metrics.PD.store(analysis.realTimeData.pureDynamics);
-	metrics.phaseCorrelation.store(analysis.realTimeData.phaseCorrelation);
-	metrics.stereoWidth.store(analysis.realTimeData.stereoWidth);
+	// Continuous/Slow Metrics
+	metrics.momentaryLUFS.store(analysis.realTimeData.momentaryLUFS, std::memory_order_release);
+	metrics.shortTermLUFS.store(analysis.realTimeData.shortTermLUFS, std::memory_order_release);
+	metrics.RMS.store(analysis.realTimeData.RMS, std::memory_order_release);
+	metrics.phaseCorrelation.store(analysis.realTimeData.phaseCorrelation, std::memory_order_release);
+	metrics.stereoWidth.store(analysis.realTimeData.stereoWidth, std::memory_order_release);
+	metrics.DR.store(analysis.realTimeData.dynamicRange, std::memory_order_release);
+	metrics.PD.store(analysis.realTimeData.pureDynamics, std::memory_order_release);
+
+	// Dynamics/Ratios
+	metrics.PSR.store(analysis.realTimeData.PSR, std::memory_order_release);
+	metrics.PLR.store(analysis.realTimeData.PLR, std::memory_order_release);
+	metrics.crestFactor.store(analysis.realTimeData.crestFactor, std::memory_order_release);
+
+	// Transient Peaks
+	UpdateLatchedMetric(metrics.leftRMS, analysis.realTimeData.leftRMS);
+	UpdateLatchedMetric(metrics.rightRMS, analysis.realTimeData.rightRMS);
+	UpdateLatchedMetric(metrics.leftSamplePeak, analysis.realTimeData.leftSamplePeak);
+	UpdateLatchedMetric(metrics.rightSamplePeak, analysis.realTimeData.rightSamplePeak);
+	UpdateLatchedMetric(metrics.truePeak, analysis.realTimeData.truePeak);
 
 	AudioWizard::Peakmeter()->UpdatePeakmeter();
 }
@@ -307,5 +341,24 @@ void AudioWizardMainRealTime::ProcessRawAudioDataCapture(const ChunkData& data) 
 	}
 
 	rawAudioData->buffer.write(data.data, sample_count);
+}
+#pragma endregion
+
+
+/////////////////////////
+// * PRIVATE HELPERS * //
+/////////////////////////
+#pragma region Private Helpers
+void AudioWizardMainRealTime::UpdateLatchedMetric(std::atomic<double>& metric, double newValue) const {
+	double current = metric.load(std::memory_order_relaxed);
+
+	while (newValue > current) {
+		if (metric.compare_exchange_weak(
+				current, newValue, std::memory_order_release, std::memory_order_relaxed)
+			) {
+			break;
+		}
+		// If CAS fails, 'current' is updated with the latest value, loop continues
+	}
 }
 #pragma endregion

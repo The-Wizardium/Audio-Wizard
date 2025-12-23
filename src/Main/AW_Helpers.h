@@ -3,13 +3,14 @@
 // * Description:    Audio Wizard Helpers Header File                        * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.1.0                                                   * //
+// * Version:        0.2.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    01-09-2025                                              * //
+// * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
 #pragma once
+#include "AW_Settings.h"
 
 
 ///////////////////////
@@ -563,8 +564,9 @@ namespace AWHCOM {
 	HRESULT LogError(HRESULT errorCode, const std::wstring& source, const std::wstring& description, bool setErrorInfo = false);
 
 	void CreateCallback(VARIANT& targetCallback, const VARIANT* newCallback, const char* callbackName);
-	void FireCallback(const VARIANT& callback, const std::function<void()>& postAction = nullptr);
+	void FireCallback(const VARIANT& callback, bool success, const std::function<void()>& postAction = nullptr);
 
+	metadb_handle_list GetMetadbHandlesFromStringArray(const VARIANT& metadata);
 	HRESULT GetOptionalLong(const VARIANT* variant, LONG& output);
 
 	class SafeArrayAccess {
@@ -654,6 +656,21 @@ namespace AWHDarkMode {
 	void Cleanup();
 	bool IsDark();
 	void SetDark(bool dark);
+}
+#pragma endregion
+
+
+///////////////////////
+// * DEBUG HELPERS * //
+///////////////////////
+#pragma region Debug Helpers
+namespace AWHDebug {
+	template<typename... Args>
+	void DebugLog(const Args&... args) {
+		if (AudioWizardSettings::systemDebugLog) {
+			FB2K_console_print("Audio Wizard => ", args...);
+		}
+	}
 }
 #pragma endregion
 
@@ -751,6 +768,19 @@ namespace AWHGraphics {
 			HDC m_hdc;
 			PAINTSTRUCT m_ps;
 	};
+
+	inline COLORREF ColorBlend(COLORREF foreground, COLORREF background, int alpha) {
+		if (alpha <= 0) return background;
+		if (alpha >= 255) return foreground;
+
+		const int invAlpha = 255 - alpha;
+
+		return RGB(
+			(GetRValue(foreground) * alpha + GetRValue(background) * invAlpha) >> 8,
+			(GetGValue(foreground) * alpha + GetGValue(background) * invAlpha) >> 8,
+			(GetBValue(foreground) * alpha + GetBValue(background) * invAlpha) >> 8
+		);
+	}
 
 	Bitmap CreateTheBitmap(int width, int height, UINT planes, UINT bitsPerPixel, const void* data);
 	Brush CreateTheSolidBrush(COLORREF color);
