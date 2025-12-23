@@ -235,7 +235,7 @@ function getMetadata(metadb) {
 	const albums = new Array(handleCount);
 	const titles = new Array(handleCount);
 
-	const sep = Unicode.InformationSeparatorOne;
+	const sep = '\u001F';
 	const combinedTf = fb.TitleFormat(`%artist%${sep}%album%${sep}%title%`);
 
 	for (let i = 0; i < handleCount; i++) {
