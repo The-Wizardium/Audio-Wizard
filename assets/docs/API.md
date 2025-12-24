@@ -45,7 +45,7 @@ from its luminous loudness to the primal pulse of its dynamic soul.
 
 # Audio Wizard - API Reference
 
-*Version 0.2 - Last Updated: 23.12.2025*
+*Version 0.2 - Last Updated: 24.12.2025*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -624,7 +624,7 @@ Demonstrates how to analyze multiple tracks and save the results to the local fi
 /**
  * Analyzes tracks and saves the waveform data to JSON files in a cache folder.
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
- * @param {string} cachePath - The folder where .aw.json files will be stored.
+ * @param {string} cachePath - The folder where .awz.json files will be stored.
  * @param {number} [metric] - The optional waveform metric (0-3).
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
  */
@@ -654,7 +654,7 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolu
 		}
 
 		fileName = fileName.replace(regexIllegalChars, '_').substring(0, 100);
-		const fullPath = `${cachePath}\\${fileName}.aw.json`;
+		const fullPath = `${cachePath}\\${fileName}.awz.json`;
 
 		for (let i = 0, len = track.waveformData.length; i < len; i += 4) {
 			structuredData.push(track.waveformData.slice(i, i + 4));
