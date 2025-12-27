@@ -3,7 +3,7 @@
 // * Description:    Audio Wizard Settings Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.2.0                                                   * //
+// * Version:        0.3.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
 // * Last change:    23-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////

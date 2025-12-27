@@ -3,9 +3,9 @@
 // * Description:    MyCOM Type Library File                                 * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.2.0                                                   * //
+// * Version:        0.3.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    27-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -50,11 +50,8 @@ interface MyCOMAPI : IDispatch {
 	// * PUBLIC API - FULL-TRACK PROPERTIES * //
 	[propget, id(22)] HRESULT FullTrackProcessing([out, retval] VARIANT_BOOL* value);
 
-	// * PUBLIC API - WAVEFORM PROPERTIES * //
-	[propput, id(23)] HRESULT WaveformMetric([in] LONG metric);
-
 	// * PUBLIC API - SYSTEM PROPERTIES * //
-	[propput, id(24)] HRESULT SystemDebugLog([in] BOOL value);
+	[propput, id(23)] HRESULT SystemDebugLog([in] BOOL value);
 
 	// * PUBLIC API - FULL-TRACK ANALYSIS CALLBACKS * //
 	HRESULT SetFullTrackAnalysisCallback([in] VARIANT* callback);
@@ -64,6 +61,7 @@ interface MyCOMAPI : IDispatch {
 	HRESULT StartWaveformAnalysis([in] VARIANT metadata, [in] LONG resolutionSec);
 	HRESULT StopWaveformAnalysis();
 	HRESULT GetWaveformData([in] LONG trackIndex, [out, retval] SAFEARRAY(float)* data);
+	HRESULT GetWaveformTrackChannels([in] LONG trackIndex, [out, retval] LONG* channels);
 	HRESULT GetWaveformTrackCount([out, retval] LONG* count);
 	HRESULT GetWaveformTrackDuration([in] LONG trackIndex, [out, retval] DOUBLE* duration);
 	HRESULT GetWaveformTrackPath([in] LONG trackIndex, [out, retval] BSTR* path);

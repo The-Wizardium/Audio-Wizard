@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.2.0                                                   * //
+// * Version:        0.3.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    27-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -119,6 +119,13 @@ void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) c
 	AWHDebug::DebugLog("GetWaveformData[", trackIndex, "]: ", track.samples.size(), " samples");
 }
 
+unsigned AudioWizardWaveform::GetWaveformTrackChannels(size_t trackIndex) const {
+	if (trackIndex < state.trackWaveforms.size()) {
+		return state.trackWaveforms[trackIndex].channels;
+	}
+	return 0;
+}
+
 size_t AudioWizardWaveform::GetWaveformTrackCount() const {
 	return state.trackWaveforms.size();
 }
@@ -153,100 +160,101 @@ void AudioWizardWaveform::SetWaveformMetric(WaveformMetric metric) {
 ////////////////////////////////////////////
 #pragma region Public Waveform Metrics Processing
 void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
-	if (!AudioWizard::Waveform() || !state.isAnalyzing.load()) {
+	if (!AudioWizard::Waveform() || !state.isAnalyzing.load(std::memory_order_relaxed)) {
 		return;
 	}
 
-	size_t currentIndex = state.currentTrackIndex.load(std::memory_order_acquire);
-
+	const size_t currentIndex = state.currentTrackIndex.load(std::memory_order_acquire);
 	if (currentIndex >= state.trackWaveforms.size()) {
 		AWHDebug::DebugLog("ProcessWaveformMetrics: Invalid track index ", currentIndex);
 		return;
 	}
 
-	// Define constants for clarity and safety
 	auto& track = state.trackWaveforms[currentIndex];
-	const int pointsPerSecond = state.pointsPerSecond.load();
-	const double resolutionSec = 1.0 / static_cast<double>(pointsPerSecond);
-	const size_t framesPerResolution = std::max<size_t>(1, static_cast<size_t>(data.sampleRate / pointsPerSecond));
-	const double rmsDivisor = data.channels > 1 ? 2.0 : 1.0;
 
-	// Reserve exact space for output vector to avoid reallocations
-	std::vector<double> output;
-	output.reserve((data.frames + framesPerResolution - 1) / framesPerResolution * Config::WAVEFORM_CHUNK_ELEMENTS);
+	// 1. Track Initialization
+	if (track.channels != data.channels) {
+		track.channels = data.channels;
+		track.activeRMSPeaks.assign(data.channels, -100.0);
+	}
+
+	// 2. Setup Processing Constants
+	const int pointsPerSecond = state.pointsPerSecond.load(std::memory_order_relaxed);
+	const size_t safePPS = (pointsPerSecond > 0) ? static_cast<size_t>(pointsPerSecond) : 1;
+
+	const size_t framesPerResolution = std::max<size_t>(1, static_cast<size_t>(data.sampleRate / safePPS));
+	const size_t numChunks = (data.frames + framesPerResolution - 1) / framesPerResolution;
+	const size_t elementsPerChunk = data.channels * Config::WAVEFORM_CHUNK_ELEMENTS;
+
+	const size_t outputStart = track.samples.size();
+	track.samples.resize(outputStart + numChunks * elementsPerChunk);
+
+	// 3. Hoist Allocations - Reuse vectors for every chunk
+	std::vector<double> sumSquares(data.channels);
+	std::vector<double> maxAbs(data.channels);
+	std::vector<double> minSample(data.channels);
+	std::vector<double> maxSample(data.channels);
 
 	double currentTime = track.lastSampleTime;
-	double maxSquaredSampleSum = 0.0;
-	double lastWaveformPeak = 0.0;
 
-	// Process audio data in chunks
-	for (size_t framesProcessed = 0; framesProcessed < data.frames;
-		framesProcessed += framesPerResolution) {
+	// 4. Main Processing Loop
+	for (size_t chunkStart = 0, chunkIdx = 0; chunkStart < data.frames;
+		chunkStart += framesPerResolution, ++chunkIdx) {
 
-		const size_t chunkSize = std::min(framesPerResolution, data.frames - framesProcessed);
+		const size_t chunkSize = std::min(framesPerResolution, data.frames - chunkStart);
+		const double chunkTimeSec = static_cast<double>(chunkSize) / data.sampleRate;
+		const double decayAmount = 20.0 * chunkTimeSec;
 		const double invChunkSize = 1.0 / static_cast<double>(chunkSize);
 
-		double sumSquaresLeft = 0.0;
-		double sumSquaresRight = 0.0;
-		double maxAbsLeft = 0.0;
-		double maxAbsRight = 0.0;
-		double maxSignedSample = 0.0;
+		// Reset accumulators
+		std::fill(sumSquares.begin(), sumSquares.end(), 0.0);
+		std::fill(maxAbs.begin(), maxAbs.end(), 0.0);
+		std::fill(minSample.begin(), minSample.end(), std::numeric_limits<double>::infinity());
+		std::fill(maxSample.begin(), maxSample.end(), -std::numeric_limits<double>::infinity());
 
-		// Accumulate metrics for the chunk
-		for (size_t i = framesProcessed; i < framesProcessed + chunkSize; ++i) {
-			const size_t baseIdx = i * data.channels;
-			for (size_t c = 0; c < data.channels; ++c) {
-				const double sample = data.data[baseIdx + c];
-				const double sampleSquared = sample * sample;
+		// Process frames - sequential memory access
+		size_t dataIdx = chunkStart * data.channels;
+		for (size_t f = 0; f < chunkSize; ++f) {
+			for (size_t c = 0; c < data.channels; ++c, ++dataIdx) {
+				const double sample = data.data[dataIdx];
 				const double absSample = std::abs(sample);
 
-				if (c == 0) {
-					sumSquaresLeft += sampleSquared;
-					maxAbsLeft = std::max(maxAbsLeft, absSample);
-				}
-				else if (c == 1 && data.channels > 1) {
-					sumSquaresRight += sampleSquared;
-					maxAbsRight = std::max(maxAbsRight, absSample);
-				}
-
-				if (absSample > std::abs(maxSignedSample)) {
-					maxSignedSample = sample;
-				}
+				sumSquares[c] += sample * sample;
+				maxAbs[c] = std::max(maxAbs[c], absSample);
+				minSample[c] = std::min(minSample[c], sample);
+				maxSample[c] = std::max(maxSample[c], sample);
 			}
 		}
 
-		// Compute waveform metrics
-		const double rmsLeft = std::sqrt(sumSquaresLeft * invChunkSize);
-		const double rmsRight = data.channels > 1 ? std::sqrt(sumSquaresRight * invChunkSize) : rmsLeft;
-		const double rms = (rmsLeft + rmsRight) / rmsDivisor;
-		const double peak = std::max(maxAbsLeft, maxAbsRight);
+		// Finalize metrics and store
+		size_t outIdx = outputStart + chunkIdx * elementsPerChunk;
+		double chunkGlobalMax = 0.0;
 
-		const double squaredSampleSum = rms * rms * static_cast<double>(chunkSize);
-		maxSquaredSampleSum = std::max(maxSquaredSampleSum, squaredSampleSum);
-		const double rmsPeak = std::sqrt(maxSquaredSampleSum * invChunkSize);
-		lastWaveformPeak = std::clamp(maxSignedSample, -1.0, 1.0);
+		for (size_t c = 0; c < data.channels; ++c) {
+			// Calculate metrics
+			const double rms = std::sqrt(sumSquares[c] * invChunkSize);
+			const double rmsDb = (rms > 0.0) ? std::max(AWHAudio::LinearToDb(rms), -100.0) : -100.0;
+			const double samplePeakDb = (maxAbs[c] > 0.0) ? std::max(AWHAudio::LinearToDb(maxAbs[c]), -100.0) : -100.0;
 
-		// Convert to dB with safety checks
-		const double rms_dB = rms > 0.0 ? std::min(AWHAudio::LinearToDb(rms), 0.0) : -100.0;
-		const double peak_dB = peak > 0.0 ? std::min(AWHAudio::LinearToDb(peak), 0.0) : -100.0;
-		const double rmsPeak_dB = rmsPeak > 0.0 ? std::min(AWHAudio::LinearToDb(rmsPeak), 0.0) : -100.0;
+			// RMS peak hold/decay
+			double& rmsPeakDb = track.activeRMSPeaks[c];
+			rmsPeakDb = (rmsDb > rmsPeakDb) ? rmsDb : std::max(-100.0, rmsPeakDb - decayAmount);
 
-		// Store metrics in output
-		output.push_back(std::round(rms_dB));
-		output.push_back(std::round(rmsPeak_dB));
-		output.push_back(std::round(peak_dB));
-		output.push_back(lastWaveformPeak);
+			// Store metrics in order: rms, rms_peak, sample_peak, min, max
+			track.samples[outIdx++] = std::round(rmsDb);
+			track.samples[outIdx++] = std::round(rmsPeakDb);
+			track.samples[outIdx++] = std::round(samplePeakDb);
+			track.samples[outIdx++] = std::clamp(minSample[c], -1.0, 1.0);
+			track.samples[outIdx++] = std::clamp(maxSample[c], -1.0, 1.0);
 
-		currentTime += resolutionSec;
+			chunkGlobalMax = std::max(chunkGlobalMax, maxAbs[c]);
+		}
+
+		track.maxAmplitude = std::max(track.maxAmplitude, chunkGlobalMax);
+		currentTime += chunkTimeSec;
 	}
 
-	// Append to current track's samples
-	track.samples.insert(track.samples.end(), output.begin(), output.end());
 	track.duration = currentTime;
 	track.lastSampleTime = currentTime;
-
-	if (!output.empty()) {
-		track.maxAmplitude = std::max(track.maxAmplitude, *std::max_element(output.begin(), output.end()));
-	}
 }
 #pragma endregion

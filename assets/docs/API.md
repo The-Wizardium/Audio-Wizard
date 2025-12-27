@@ -45,7 +45,7 @@ from its luminous loudness to the primal pulse of its dynamic soul.
 
 # Audio Wizard - API Reference
 
-*Version 0.2 - Last Updated: 24.12.2025*
+*Version 0.3 - Last Updated: 27.12.2025*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -542,11 +542,10 @@ Generate waveform data:
 /**
  * Starts waveform analysis for single or multiple tracks.
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
- * @param {number} [metric] - The optional waveform metric (0-3).
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
- * @returns {Promise<{success: boolean, tracks?: Array<{index: number, path: string, duration: number, waveformData: Array}>}>}
+ * @returns {Promise<{success: boolean, tracks?: Array<{index: number, path: string, duration: number, channels: number, waveformData: Array}>}>}
  */
-async function startWaveformAnalysis(metadb, metric = 0, resolution = 1) {
+async function startWaveformAnalysis(metadb, resolution = 1) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
 		return { success: false };
 	}
@@ -571,15 +570,21 @@ async function startWaveformAnalysis(metadb, metric = 0, resolution = 1) {
 					const trackCount = AudioWizard.GetWaveformTrackCount();
 					console.log(`Audio Wizard => Processing ${trackCount} track(s)`);
 
-					// Retrieve each track's waveform data
 					for (let i = 0; i < trackCount; i++) {
-						const waveformData = AudioWizard.GetWaveformData(i);
 						const path = AudioWizard.GetWaveformTrackPath(i);
-						const duration = AudioWizard.GetWaveformTrackDuration(i).toFixed(2);
-						const resolution = (waveformData.length / duration / 4).toFixed(1);
-						tracks.push({ index: i, path, duration, waveformData });
-						console.log(`Audio Wizard => Track ${i + 1}: ${waveformData.length} waveform values over ${duration}s (resolution: ~${resolution} pts/sec)`);
-						// console.log(`Audio Wizard => Track ${i + 1}: ${waveformData}`);
+						const duration = AudioWizard.GetWaveformTrackDuration(i);
+						const channels = AudioWizard.GetWaveformTrackChannels(i);
+						const waveformData = AudioWizard.GetWaveformData(i);
+
+						const metricsPerPoint = 5 * channels;
+						const totalValues = waveformData.length;
+						const numPoints = totalValues / metricsPerPoint;
+						const durLog = duration.toFixed(2);
+						const resLog = (numPoints / duration).toFixed(1);
+
+						tracks.push({ index: i, path, duration, channels, waveformData });
+						console.log(`Audio Wizard => Track ${i + 1}: ${totalValues} values (${numPoints} points over ${durLog}s, resolution: ~${resLog} pts/sec)`);
+						// console.log(`Audio Wizard => Track ${i + 1}: ${waveformData.map(v => Number(v.toFixed(3))).join(',')}`);
 					}
 
 					resolve({ success: true, tracks });
@@ -591,7 +596,6 @@ async function startWaveformAnalysis(metadb, metric = 0, resolution = 1) {
 				}
 			};
 
-			AudioWizard.WaveformMetric = metric;
 			AudioWizard.SetFullTrackWaveformCallback(onComplete);
 			AudioWizard.StartWaveformAnalysis(metadata, resolution);
 		});
@@ -605,7 +609,6 @@ async function startWaveformAnalysis(metadb, metric = 0, resolution = 1) {
 ```
 
 **Notes**:
-- Set `WaveformMetric` before analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).
 - Uses `Promise` for asynchronous analysis with timeout.
 - Check `FullTrackProcessing` property before starting.
 - This method allows analyzing ANY tracks using the metadata array overload.
@@ -625,15 +628,14 @@ Demonstrates how to analyze multiple tracks and save the results to the local fi
  * Analyzes tracks and saves the waveform data to JSON files in a cache folder.
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
  * @param {string} cachePath - The folder where .awz.json files will be stored.
- * @param {number} [metric] - The optional waveform metric (0-3).
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
  */
-async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolution) {
+async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) return;
 
 	console.log(`Audio Wizard => Batch processing ${metadb.Count} tracks...`);
 
-	const result = await startWaveformAnalysis(metadb, metric, resolution);
+	const result = await startWaveformAnalysis(metadb, resolution);
 	if (!result.success) return;
 
 	const fso = new ActiveXObject('Scripting.FileSystemObject');
@@ -646,6 +648,7 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolu
 	for (const track of result.tracks) {
 		const structuredData = [];
 		const handle = metadb[track.index];
+
 		let fileName = tfArtistTitle.EvalWithMetadb(handle).trim();
 
 		if (!fileName) {
@@ -655,14 +658,26 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolu
 
 		fileName = fileName.replace(regexIllegalChars, '_').substring(0, 100);
 		const fullPath = `${cachePath}\\${fileName}.awz.json`;
+		const metricsPerPoint = 5 * track.channels;
 
-		for (let i = 0, len = track.waveformData.length; i < len; i += 4) {
-			structuredData.push(track.waveformData.slice(i, i + 4));
+		for (let i = 0; i < track.waveformData.length; i += metricsPerPoint) {
+			const pointSlice = track.waveformData.slice(i, i + metricsPerPoint);
+			const roundedSlice = pointSlice.map(v => Math.round(v * 1000) / 1000);
+			structuredData.push(roundedSlice);
 		}
+
+		const jsonFile = JSON.stringify({
+			version: 1,
+			channels: track.channels,
+			duration: track.duration,
+			metricsPerChannel: 5,
+			metrics: ['rms', 'rms_peak', 'sample_peak', 'min', 'max'],
+			data: structuredData
+		});
 
 		try {
 			const file = fso.CreateTextFile(fullPath, true, true);
-			file.Write(JSON.stringify(structuredData));
+			file.Write(jsonFile);
 			file.Close();
 			console.log(`Audio Wizard => Saved: ${fullPath}`);
 		} catch (e) {
@@ -673,7 +688,8 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, metric, resolu
 ```
 
 **Notes**:
-- GetWaveformData returns a flat array. Every 4 waveform metrics represent one time point.
+- GetWaveformData returns a flat array. Every 5 metrics per channel represent one time point.
+- For stereo audio, that's 10 values per point: [L_RMS, L_RMSPeak, L_Peak, L_Min, L_Max, R_RMS, R_RMSPeak, R_Peak, R_Min, R_Max, ...]
 - For production use, consider using LZString or LZUTF8 to reduce file size by up to 90%.
 
 <br>
@@ -745,7 +761,6 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | PeakmeterAdjustedLeftSamplePeak   | number               | Read-only  | Adjusted sample peak for the left channel in dBFS, optimized for display.   |
 | PeakmeterAdjustedRightSamplePeak  | number               | Read-only  | Adjusted sample peak for the right channel in dBFS, optimized for display.  |
 | RawAudioData                      | Array                | Read-only  | PCM audio samples for the current chunk.                                    |
-| WaveformMetric                    | number               | Read/Write | Metric for analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).   |
 | FullTrackProcessing               | bool                 | Read-only  | Indicates if full-track analysis or waveform analysis is currently running. |
 | SystemDebugLog                    | bool                 | Read/Write | Prints detailed debug logs in the foobar console.                           |
 
@@ -758,7 +773,6 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - `RawAudioData`: Raw PCM samples; see [Raw Audio Data](#raw-audio-data) example.
 
 - **Waveform Analysis**:
-  - `WaveformMetric`: Set to 0 (RMS), 1 (RMS_Peak), 2 (Peak), or 3 (Waveform_Peak) before analysis.
   - `WaveformData`: Waveform data points; see [Waveform Analysis](#waveform-analysis) example.
 
 - **Processing State**:
@@ -827,7 +841,14 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 - **Waveform Analysis**:
   - `StartWaveformAnalysis(metadata, resolution)`: Analyzes specific tracks using metadata array (multi-track support).
   - Set `resolution` (points per second, 1-1000) for data granularity.
-  - `GetWaveformData(trackIndex)`: Returns flat array of waveform points for the given track (4 values per point: RMS dB, RMS_Peak dB, Peak dB, Waveform_Peak).
+  - `GetWaveformData(trackIndex)`: Returns flat array of waveform points for the given track.
+     Each time point contains 5 metrics per channel:
+  - Index 0: RMS (dB)
+  - Index 1: RMS Peak (dB, decaying)
+  - Index 2: Sample Peak (dB)
+  - Index 3: Min sample value (linear, -1.0 to 1.0)
+  - Index 4: Max sample value (linear, -1.0 to 1.0)
+    For stereo audio: [L_RMS, L_RMSPeak, L_Peak, L_Min, L_Max, R_RMS, R_RMSPeak, R_Peak, R_Min, R_Max, ...]
   - `GetWaveformTrackCount()`: Returns number of analyzed tracks – useful for looping.
   - `GetWaveformTrackDuration(trackIndex)` and `GetWaveformTrackPath(trackIndex)`: Retrieve track metadata for display or caching.
   - `SetFullTrackWaveformCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
@@ -891,8 +912,7 @@ Common errors include:
 | Peakmeter Adjusted Right Sample Peak    | Adjusted sample peak for the right channel in dBFS, typically -5 to +5, optimized for display.             |
 | Peakmeter Offset                        | Gain offset in dB applied to peakmeter measurements, adjustable from -20 to +20.                           |
 | Raw Audio Data                          | Raw PCM audio samples for the current chunk, unitless.                                                     |
-| Waveform Data                           | Data points for waveform analysis, depending on the selected metric (e.g., RMS, Peak).                     |
-| Waveform Metric                         | The metric used for waveform analysis (0 = RMS, 1 = RMS_Peak, 2 = Peak, 3 = Waveform_Peak).                |
+| Waveform Data Structure                 | Each time point contains 5 metrics per channel: RMS, RMS Peak, Sample Peak, Min (linear), Max (linear).    |
 | Waveform Resolution                     | The density of data points per second in waveform analysis, ranging from 1 to 1000.                        |
 | dBFS                                    | Decibels relative to Full Scale, a measure of amplitude relative to the maximum possible digital level.    |
 | dBTP                                    | Decibels True Peak, accounting for inter-sample peaks in digital audio.                                    |

@@ -42,6 +42,33 @@ weaving elegance and stability into foobar2000’s ethereal form.*
 <br>
 <br>
 
+## Version 0.3.0 - 27-12-2025
+This release heralds the **Third Flame of the Rubynar Sanctum** — a profound evolution of waveform analysis, now embracing true multi-channel fidelity and richer temporal detail. The arcane scribes have reforged the waveform rite from its foundations, granting scholars unprecedented insight into the sonic tapestry.
+
+#### Added
+- **Multi-channel waveform support** with per-channel metrics and dynamic RMS peak hold/decay.
+- New waveform metrics per channel: **RMS**, **RMS Peak (decaying hold)**, **Sample Peak**, **Min sample**, **Max sample**.
+- New API method: `GetWaveformTrackChannels(trackIndex)` to query channel count per analyzed track.
+- Structured caching example now includes version header, channel count, and metric labels for future-proof persistence.
+
+#### Changed
+- **Breaking**: Removed `WaveformMetric` property — waveform analysis now always outputs the full enriched 5-metric-per-channel dataset.
+- **Breaking**: Waveform data array is now flat with **5 values per channel per time point** (e.g., 10 values for stereo, 5 for mono; previously 4 global values regardless of channel count).
+- Waveform data now includes per-channel min/max linear samples (-1.0 to 1.0) alongside dB measurements for richer visualization possibilities.
+- Improved waveform processing performance and memory efficiency via pre-allocation and reduced branching.
+- Enhanced decoder robustness with graceful skipping of unopenable tracks.
+
+#### Fixed
+- COM ABI mismatch on VARIANT parameters that caused crashes in x86 (32-bit) builds.
+
+#### Improved
+- Waveform resolution and timing precision across variable sample rates and chunk sizes.
+- Documentation with updated examples reflecting new data layout and multi-channel handling.
+- Internal logging and error reporting during full-track decoding.
+
+<br>
+<br>
+
 ## Version 0.2.0 - 23-12-2025
 This release marks a major evolution with **Wizardious Dynamic Peaks**™ — our trademark arcane visualization — and a ground-up rewrite of real-time audio acquisition for buttery-smooth, flicker-free rendering, alongside powerful new multi-track batch processing capabilities and an expanded scripting API.
 

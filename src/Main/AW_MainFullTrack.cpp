@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Full-Track Source File                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.2.0                                                   * //
+// * Version:        0.3.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    27-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -303,10 +303,6 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 	service_ptr_t<input_decoder> decoder;
 	service_ptr_t<file> fileHandle;
 	const auto& location = track->get_location();
-	input_entry::g_open_for_decoding(decoder, fileHandle, location.get_path(), abort, false);
-	decoder->initialize(location.get_subsong_index(), 0, abort);
-
-	audio_chunk_impl chunk;
 	ftData.handle = track;
 
 	std::vector<audioType> audioBuffer;
@@ -351,13 +347,28 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 		}
 	};
 
+	try {
+		input_entry::g_open_for_decoding(decoder, fileHandle, location.get_path(), abort, false);
+		decoder->initialize(location.get_subsong_index(), 0, abort);
+	}
+	catch (const std::exception& e) {
+		FB2K_console_formatter() << "Audio Wizard => Failed to open track (skipping): " << track->get_path() << " - " << e.what();
+		return;
+	}
+	catch (...) {
+		FB2K_console_formatter() << "Audio Wizard => Unknown error opening track (skipping): " << track->get_path();
+		return;
+	}
+
+	audio_chunk_impl chunk;
+
 	while (decoder->run(chunk, abort)) {
 		if (channels == 0) {
 			channels = chunk.get_channels();
 			sampleRate = chunk.get_srate();
 			targetFrames = static_cast<t_size>(sampleRate * (chunkDurationMs / 1000.0));
 			if (targetFrames < 1) targetFrames = 1;
-			audioBuffer.reserve(targetFrames * channels * 2); // Pre-reserve lightly
+			audioBuffer.reserve(targetFrames * channels * 2);
 		}
 
 		const auto* chunkData = chunk.get_data();
@@ -375,6 +386,7 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 				status->set_progress_float(progress);
 				status->force_update();
 			}
+
 			abort.check();
 		}
 	}
@@ -399,13 +411,8 @@ void AudioWizardMainFullTrack::FullTrackAudioDecoder(const metadb_handle_ptr& tr
 void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& track, FullTrackResults* results, threaded_process_status* status) {
 	if (results) { // Processing for analysis dialog
 		FullTrackData ftData = {};
-		try {
-			abort_callback_impl abort;
-			FullTrackAudioDecoder(track, ftData, results, abort, false, false, status);
-		}
-		catch (const std::exception& e) {
-			FB2K_console_formatter() << "Audio Wizard => Full-track batch analysis failed: " << e.what();
-		}
+		abort_callback_impl abort;
+		FullTrackAudioDecoder(track, ftData, results, abort, false, false, status);
 	}
 	else { // Processing for external API usage
 		fetcher.isFullTrackFetching.store(true, std::memory_order_release);

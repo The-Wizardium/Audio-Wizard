@@ -3,9 +3,9 @@
 // * Description:    MyCOM Source File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.2.0                                                   * //
+// * Version:        0.3.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    27-12-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -646,24 +646,6 @@ STDMETHODIMP MyCOM::get_FullTrackProcessing(VARIANT_BOOL* value) const {
 #pragma endregion
 
 
-/////////////////////////////////////////////////////////////
-// * MyCOM - PUBLIC API - FULL-TRACK WAVEFORM PROPERTIES * //
-/////////////////////////////////////////////////////////////
-#pragma region MyCOM - Public API - Full-Track Waveform Properties
-STDMETHODIMP MyCOM::put_WaveformMetric(LONG metric) const {
-	if (metric < 0 || metric > 4) {
-		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::put_WaveformMetric", L"Invalid metric value, must be 0-4", true);
-	}
-	if (!AudioWizard::Waveform()) {
-		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::put_WaveformMetric", L"AudioWizard::Waveform not available", true);
-	}
-
-	AudioWizard::Waveform()->SetWaveformMetric(static_cast<AudioWizardWaveform::WaveformMetric>(metric));
-	return S_OK;
-}
-#pragma endregion
-
-
 ////////////////////////////////////////////////
 // * MyCOM - PUBLIC API - SYSTEM PROPERTIES * //
 ////////////////////////////////////////////////
@@ -754,6 +736,22 @@ STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, SAFEARRAY** data) const {
 	}
 
 	AudioWizard::Waveform()->GetWaveformData(static_cast<size_t>(trackIndex), data);
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetWaveformTrackChannels(LONG trackIndex, LONG* channels) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformTrackChannels", L"AudioWizard::Waveform not available", true);
+	}
+	if (!channels) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformTrackChannels", L"Invalid pointer", true);
+	}
+
+	if (trackIndex < 0 || trackIndex >= static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount())) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformData", L"Invalid track index", true);
+	}
+
+	*channels = static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackChannels(static_cast<size_t>(trackIndex)));
 	return S_OK;
 }
 
