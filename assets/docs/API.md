@@ -45,7 +45,7 @@ from its luminous loudness to the primal pulse of its dynamic soul.
 
 # Audio Wizard - API Reference
 
-*Version 0.3 - Last Updated: 27.12.2025*
+*Version 0.4 - Last Updated: 30.05.2026*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -554,7 +554,6 @@ async function startWaveformAnalysis(metadb, resolution = 1) {
 
 	try {
 		const { metadata } = getMetadata(metadb);
-
 		return await new Promise((resolve) => {
 			const onComplete = (success) => {
 				try {
@@ -573,17 +572,14 @@ async function startWaveformAnalysis(metadb, resolution = 1) {
 					for (let i = 0; i < trackCount; i++) {
 						const path = AudioWizard.GetWaveformTrackPath(i);
 						const duration = AudioWizard.GetWaveformTrackDuration(i);
-						const channels = AudioWizard.GetWaveformTrackChannels(i);
 						const waveformData = AudioWizard.GetWaveformData(i);
-
-						const metricsPerPoint = 5 * channels;
-						const totalValues = waveformData.length;
-						const numPoints = totalValues / metricsPerPoint;
+						const channels = waveformData.length;
+						const numPoints = channels > 0 ? waveformData[0].length / 5 : 0;
 						const durLog = duration.toFixed(2);
-						const resLog = (numPoints / duration).toFixed(1);
+						const resLog = duration > 0 ? (numPoints / duration).toFixed(1) : '0.0';
 
 						tracks.push({ index: i, path, duration, channels, waveformData });
-						console.log(`Audio Wizard => Track ${i + 1}: ${totalValues} values (${numPoints} points over ${durLog}s, resolution: ~${resLog} pts/sec)`);
+						console.log(`Audio Wizard => Track ${i + 1}: ${channels}ch, ${numPoints} points over ${durLog}s, resolution: ~${resLog} pts/sec`);
 						// console.log(`Audio Wizard => Track ${i + 1}: ${waveformData.map(v => Number(v.toFixed(3))).join(',')}`);
 					}
 
@@ -629,26 +625,28 @@ Demonstrates how to analyze multiple tracks and save the results to the local fi
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
  * @param {string} cachePath - The folder where .awz.json files will be stored.
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
+ * @param {boolean} [prettify] - The optional prettified JSON output format - increases filesize.
  */
-async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution) {
+async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1, prettify = false) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) return;
 
-	console.log(`Audio Wizard => Batch processing ${metadb.Count} tracks...`);
+	const handleData = metadb || plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
+	const handleList = new FbMetadbHandleList(handleData);
+	const handleArray = handleList.Convert();
+
+	console.log(`Audio Wizard => Batch processing ${handleArray.length} tracks...`);
 
 	const result = await startWaveformAnalysis(metadb, resolution);
 	if (!result.success) return;
 
 	const fso = new ActiveXObject('Scripting.FileSystemObject');
 	if (!fso.FolderExists(cachePath)) fso.CreateFolder(cachePath);
-
 	const tfArtistTitle = fb.TitleFormat('%artist% - %title%');
 	const regexIllegalChars = /[<>:"\/\\|?*]+/g;
 	const regexFileExtension = /\.[^/.]+$/;
 
 	for (const track of result.tracks) {
-		const structuredData = [];
-		const handle = metadb[track.index];
-
+		const handle = handleArray[track.index];
 		let fileName = tfArtistTitle.EvalWithMetadb(handle).trim();
 
 		if (!fileName) {
@@ -658,22 +656,54 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution) {
 
 		fileName = fileName.replace(regexIllegalChars, '_').substring(0, 100);
 		const fullPath = `${cachePath}\\${fileName}.awz.json`;
-		const metricsPerPoint = 5 * track.channels;
+		const structuredData = [];
 
-		for (let i = 0; i < track.waveformData.length; i += metricsPerPoint) {
-			const pointSlice = track.waveformData.slice(i, i + metricsPerPoint);
-			const roundedSlice = pointSlice.map(v => Math.round(v * 1000) / 1000);
-			structuredData.push(roundedSlice);
+		for (let ch = 0; ch < track.channels; ch++) {
+			const channelPoints = [];
+			const chData = track.waveformData[ch];
+
+			for (let pt = 0; pt < chData.length; pt += 5) {
+				channelPoints.push([
+					Math.round(chData[pt + 0] * 1000) / 1000, // rms
+					Math.round(chData[pt + 1] * 1000) / 1000, // rms_peak
+					Math.round(chData[pt + 2] * 1000) / 1000, // sample_peak
+					Math.round(chData[pt + 3] * 1000) / 1000, // min
+					Math.round(chData[pt + 4] * 1000) / 1000  // max
+				]);
+			}
+			structuredData.push(channelPoints);
 		}
 
-		const jsonFile = JSON.stringify({
+		const jsonObj = {
 			version: 1,
 			channels: track.channels,
 			duration: track.duration,
 			metricsPerChannel: 5,
 			metrics: ['rms', 'rms_peak', 'sample_peak', 'min', 'max'],
 			data: structuredData
-		});
+		};
+
+		let jsonFile = '';
+
+		if (prettify) {
+			const regexMetricsField = /"metrics":\s*\[[^\]]*\]/g;
+			const regexArraySpaceOpen = /\[ /g;
+			const regexArraySpaceClose = / \]/g;
+			const regexNumericArray = /\[([\s\d.,-]+)\]/g;
+
+			// 1. Generate standard tabbed JSON string first
+			jsonFile = JSON.stringify(jsonObj, null, '\t');
+
+			// 2. Collapse the "metrics" string array into a single line
+			jsonFile = jsonFile.replace(regexMetricsField, (match) =>
+				match.replace(/\s+/g, ' ').replace(regexArraySpaceOpen, '[').replace(regexArraySpaceClose, ']'));
+
+			// 3. Collapse the innermost 5-number data arrays into single lines
+			jsonFile = jsonFile.replace(regexNumericArray, (match, contents) =>
+				`[${contents.trim().replace(/\s+/g, ' ')}]`);
+		} else {
+			jsonFile = JSON.stringify(jsonObj);
+		}
 
 		try {
 			const file = fso.CreateTextFile(fullPath, true, true);
@@ -688,9 +718,11 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution) {
 ```
 
 **Notes**:
-- GetWaveformData returns a flat array. Every 5 metrics per channel represent one time point.
-- For stereo audio, that's 10 values per point: [L_RMS, L_RMSPeak, L_Peak, L_Min, L_Max, R_RMS, R_RMSPeak, R_Peak, R_Min, R_Max, ...]
-- For production use, consider using LZString or LZUTF8 to reduce file size by up to 90%.
+- `GetWaveformData` returns an array of channel arrays - `waveformData.length` equals the channel count.
+- `waveformData[ch]` is a flat array where every 5 values represent one time point: `[RMS, RMSPeak, SamplePeak, Min, Max]`
+- For stereo: `waveformData[0]` = left channel, `waveformData[1]` = right channel.
+- The saved JSON uses `data[ch][t] = [rms, rms_peak, sample_peak, min, max]`.
+- For production use, consider LZString or LZUTF8 to reduce file size by up to 90%.
 
 <br>
 <br>
@@ -772,9 +804,6 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 - **Raw Audio Data**:
   - `RawAudioData`: Raw PCM samples; see [Raw Audio Data](#raw-audio-data) example.
 
-- **Waveform Analysis**:
-  - `WaveformData`: Waveform data points; see [Waveform Analysis](#waveform-analysis) example.
-
 - **Processing State**:
   - `FullTrackProcessing`: Use this to check if an analysis operation is in progress before starting a new one.
 
@@ -841,14 +870,16 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 - **Waveform Analysis**:
   - `StartWaveformAnalysis(metadata, resolution)`: Analyzes specific tracks using metadata array (multi-track support).
   - Set `resolution` (points per second, 1-1000) for data granularity.
-  - `GetWaveformData(trackIndex)`: Returns flat array of waveform points for the given track.
-     Each time point contains 5 metrics per channel:
-  - Index 0: RMS (dB)
-  - Index 1: RMS Peak (dB, decaying)
-  - Index 2: Sample Peak (dB)
-  - Index 3: Min sample value (linear, -1.0 to 1.0)
-  - Index 4: Max sample value (linear, -1.0 to 1.0)
-    For stereo audio: [L_RMS, L_RMSPeak, L_Peak, L_Min, L_Max, R_RMS, R_RMSPeak, R_Peak, R_Min, R_Max, ...]
+  - `GetWaveformData(trackIndex)`: Returns an array of channel arrays (one flat array per channel).
+     `waveformData.length` = number of channels (self-describing; no need to call `GetWaveformTrackChannels` separately).
+     `waveformData[ch]` = flat array of 5 metrics per time point for that channel:
+     - Offset 0: RMS (dB)
+     - Offset 1: RMS Peak (dB, decaying)
+     - Offset 2: Sample Peak (dB)
+     - Offset 3: Min sample value (linear, -1.0 to 1.0)
+     - Offset 4: Max sample value (linear, -1.0 to 1.0)
+     For stereo: `waveformData[0]` = left, `waveformData[1]` = right.
+     Total time points = `waveformData[0].length / 5`.
   - `GetWaveformTrackCount()`: Returns number of analyzed tracks – useful for looping.
   - `GetWaveformTrackDuration(trackIndex)` and `GetWaveformTrackPath(trackIndex)`: Retrieve track metadata for display or caching.
   - `SetFullTrackWaveformCallback`: Provide a JavaScript function that receives a boolean `success` parameter.

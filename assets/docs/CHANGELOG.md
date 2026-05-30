@@ -42,6 +42,24 @@ weaving elegance and stability into foobar2000’s ethereal form.*
 <br>
 <br>
 
+## Version 0.4.0 - 30-05-2026
+This release refines the waveform system with a cleaner data structure and fixes critical issues with lossy audio formats.
+
+### Changed
+- **New Waveform Format**: Completely reforged the waveform data structure for better usability.
+  - `GetWaveformData(trackIndex)` now returns an array of channels.
+  - Each channel contains an array of time points, where each point is `[RMS, RMS Peak, Sample Peak, Min, Max]`.
+  - Saved `.awz.json` files now use the new structured format with `channels`, `metricsPerChannel`, and nested `data` arrays.
+- Updated all JavaScript helpers, WaveformBar class, and API examples to work with the new format.
+- Improved documentation and examples reflecting the new data layout.
+
+### Fixed
+- **Lossy Codec Waveform Generation**: Fixed clamping of dB values so lossy formats (MP3, AAC, OGG, Opus, etc.) no longer produce broken or missing waveforms due to inter-sample peaks above 0 dBFS.
+- Potential positive dB values escaping the valid range in RMS, RMS Peak, and Sample Peak metrics.
+
+<br>
+<br>
+
 ## Version 0.3.0 - 27-12-2025
 This release heralds the **Third Flame of the Rubynar Sanctum** — a profound evolution of waveform analysis, now embracing true multi-channel fidelity and richer temporal detail. The arcane scribes have reforged the waveform rite from its foundations, granting scholars unprecedented insight into the sonic tapestry.
 

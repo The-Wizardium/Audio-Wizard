@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.3.0                                                   * //
+// * Version:        0.4.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    27-12-2025                                              * //
+// * Last change:    30-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -105,18 +105,63 @@ void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) c
 
 	if (trackIndex >= state.trackWaveforms.size()) {
 		FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Invalid index " << trackIndex;
-
-		*data = AWHCOM::CreateSafeArrayFromData(
-			std::vector<double>{}.begin(), std::vector<double>{}.end(), "GetWaveformData"
-		);
-
+		SAFEARRAYBOUND bound = { 0, 0 };
+		*data = SafeArrayCreate(VT_VARIANT, 1, &bound);
 		return;
 	}
 
 	const auto& track = state.trackWaveforms[trackIndex];
-	*data = AWHCOM::CreateSafeArrayFromData(track.samples.begin(), track.samples.end(), "GetWaveformData");
+	const unsigned channels = (track.channels > 0) ? track.channels : 1;
+	const size_t metricsPC = Config::WAVEFORM_CHUNK_ELEMENTS; // 5
+	const size_t step = channels * metricsPC;
+	const size_t total = track.samples.size();
+	const size_t numPoints = (step > 0 && total >= step) ? (total / step) : 0;
 
-	AWHDebug::DebugLog("GetWaveformData[", trackIndex, "]: ", track.samples.size(), " samples");
+	SAFEARRAYBOUND outerBound = { channels, 0 };
+	SAFEARRAY* outerArray = SafeArrayCreate(VT_VARIANT, 1, &outerBound);
+	if (!outerArray) {
+		FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Failed to create outer SAFEARRAY";
+		*data = nullptr;
+		return;
+	}
+
+	for (unsigned c = 0; c < channels; ++c) {
+		std::vector<double> chData;
+		chData.reserve(numPoints * metricsPC);
+		const size_t offset = c * metricsPC;
+
+		for (size_t t = 0; t < numPoints; ++t) {
+			const size_t base = t * step + offset;
+			chData.insert(chData.end(),
+				track.samples.begin() + base,
+				track.samples.begin() + base + metricsPC);
+		}
+
+		SAFEARRAY* innerArray = AWHCOM::CreateSafeArrayFromData(
+			chData.begin(), chData.end(), "GetWaveformData"
+		);
+
+		if (!innerArray) {
+			FB2K_console_formatter() << "Audio Wizard => GetWaveformData: Failed inner SAFEARRAY for ch " << c;
+			continue;
+		}
+
+		VARIANT v;
+		VariantInit(&v);
+		V_VT(&v) = VT_ARRAY | VT_R4;
+		V_ARRAY(&v) = innerArray;
+		LONG idx = static_cast<LONG>(c);
+
+		HRESULT hr = SafeArrayPutElement(outerArray, &idx, &v); // deep-copies innerArray
+		if (FAILED(hr)) {
+			FB2K_console_formatter() << "Audio Wizard => GetWaveformData: SafeArrayPutElement failed ch " << c << " hr=" << hr;
+		}
+		SafeArrayDestroy(innerArray); // free local reference
+
+		AWHDebug::DebugLog("GetWaveformData[", trackIndex, "] ch", c, ": ", chData.size(), " values");
+	}
+
+	*data = outerArray;
 }
 
 unsigned AudioWizardWaveform::GetWaveformTrackChannels(size_t trackIndex) const {
@@ -233,12 +278,12 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 		for (size_t c = 0; c < data.channels; ++c) {
 			// Calculate metrics
 			const double rms = std::sqrt(sumSquares[c] * invChunkSize);
-			const double rmsDb = (rms > 0.0) ? std::max(AWHAudio::LinearToDb(rms), -100.0) : -100.0;
-			const double samplePeakDb = (maxAbs[c] > 0.0) ? std::max(AWHAudio::LinearToDb(maxAbs[c]), -100.0) : -100.0;
+			const double rmsDb = (rms > 0.0) ? std::clamp(AWHAudio::LinearToDb(rms), -100.0, 0.0) : -100.0;
+			const double samplePeakDb = (maxAbs[c] > 0.0) ? std::clamp(AWHAudio::LinearToDb(maxAbs[c]), -100.0, 0.0) : -100.0;
 
 			// RMS peak hold/decay
 			double& rmsPeakDb = track.activeRMSPeaks[c];
-			rmsPeakDb = (rmsDb > rmsPeakDb) ? rmsDb : std::max(-100.0, rmsPeakDb - decayAmount);
+			rmsPeakDb = std::clamp((rmsDb > rmsPeakDb) ? rmsDb : rmsPeakDb - decayAmount, -100.0, 0.0);
 
 			// Store metrics in order: rms, rms_peak, sample_peak, min, max
 			track.samples[outIdx++] = std::round(rmsDb);

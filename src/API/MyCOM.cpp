@@ -3,9 +3,9 @@
 // * Description:    MyCOM Source File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.3.0                                                   * //
+// * Version:        0.4.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    27-12-2025                                              * //
+// * Last change:    30-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -724,7 +724,7 @@ STDMETHODIMP MyCOM::StopWaveformAnalysis() const {
 	return S_OK;
 }
 
-STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, SAFEARRAY** data) const {
+STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, VARIANT* data) const {
 	if (!AudioWizard::Waveform()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformData", L"AudioWizard::Waveform not available", true);
 	}
@@ -735,7 +735,13 @@ STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, SAFEARRAY** data) const {
 		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformData", L"Invalid track index", true);
 	}
 
-	AudioWizard::Waveform()->GetWaveformData(static_cast<size_t>(trackIndex), data);
+	SAFEARRAY* outerArray = nullptr;
+	AudioWizard::Waveform()->GetWaveformData(static_cast<size_t>(trackIndex), &outerArray);
+
+	VariantInit(data);
+	V_VT(data) = VT_ARRAY | VT_VARIANT;
+	V_ARRAY(data) = outerArray;
+
 	return S_OK;
 }
 
