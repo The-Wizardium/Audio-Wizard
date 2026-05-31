@@ -45,7 +45,7 @@ from its luminous loudness to the primal pulse of its dynamic soul.
 
 # Audio Wizard - API Reference
 
-*Version 0.4 - Last Updated: 30.05.2026*
+*Version 0.5 - Last Updated: 31.05.2026*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -543,9 +543,10 @@ Generate waveform data:
  * Starts waveform analysis for single or multiple tracks.
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
+ * @param {boolean} [downmixToMono] - The optional downmix of all channels are averaged to a single mono channel.
  * @returns {Promise<{success: boolean, tracks?: Array<{index: number, path: string, duration: number, channels: number, waveformData: Array}>}>}
  */
-async function startWaveformAnalysis(metadb, resolution = 1) {
+async function startWaveformAnalysis(metadb, resolution = 1, downmixToMono = false) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
 		return { success: false };
 	}
@@ -593,7 +594,7 @@ async function startWaveformAnalysis(metadb, resolution = 1) {
 			};
 
 			AudioWizard.SetFullTrackWaveformCallback(onComplete);
-			AudioWizard.StartWaveformAnalysis(metadata, resolution);
+			AudioWizard.StartWaveformAnalysis(metadata, resolution, downmixToMono);
 		});
 	}
 	catch (e) {
@@ -611,6 +612,9 @@ async function startWaveformAnalysis(metadb, resolution = 1) {
 - Use `SetFullTrackWaveformCallback` for completion notification.
 - Call `StopWaveformAnalysis()` to abort or clean up after completion.
 - Resolution is in points per second (1-1000).
+- When `downmixToMono = true`, all source channels are averaged to mono internally.
+  `waveformData.length` will be `1`. This eliminates the need for manual per-script averaging and reduces storage by the channel count factor.
+
 
 <br>
 <br>
@@ -625,9 +629,10 @@ Demonstrates how to analyze multiple tracks and save the results to the local fi
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
  * @param {string} cachePath - The folder where .awz.json files will be stored.
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
+ * @param {boolean} [downmixToMono] - The optional downmix of all channels are averaged to a single mono channel.
  * @param {boolean} [prettify] - The optional prettified JSON output format - increases filesize.
  */
-async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1, prettify = false) {
+async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1, downmixToMono = false, prettify = false,) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) return;
 
 	const handleData = metadb || plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
@@ -636,7 +641,7 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1
 
 	console.log(`Audio Wizard => Batch processing ${handleArray.length} tracks...`);
 
-	const result = await startWaveformAnalysis(metadb, resolution);
+	const result = await startWaveformAnalysis(metadb, resolution, downmixToMono);
 	if (!result.success) return;
 
 	const fso = new ActiveXObject('Scripting.FileSystemObject');
@@ -718,10 +723,11 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1
 ```
 
 **Notes**:
-- `GetWaveformData` returns an array of channel arrays - `waveformData.length` equals the channel count.
+- `GetWaveformData` returns an array of channel arrays — `waveformData.length` equals the channel count after any downmix.
 - `waveformData[ch]` is a flat array where every 5 values represent one time point: `[RMS, RMSPeak, SamplePeak, Min, Max]`
-- For stereo: `waveformData[0]` = left channel, `waveformData[1]` = right channel.
-- The saved JSON uses `data[ch][t] = [rms, rms_peak, sample_peak, min, max]`.
+- For stereo (downmixToMono = false): `waveformData[0]` = left channel, `waveformData[1]` = right channel.
+- For mono (downmixToMono = true): `waveformData[0]` = averaged mono signal; no further averaging needed in script code.
+- The saved JSON reflects `channels: 1` when downmixToMono is true.
 - For production use, consider LZString or LZUTF8 to reduce file size by up to 90%.
 
 <br>
@@ -820,7 +826,7 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | StopPeakmeterMonitoring         | () -> void                                              | Stops peakmeter monitoring.                                           |
 | StartRawAudioMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts raw audio data capture.                                        |
 | StopRawAudioMonitoring          | () -> void                                              | Stops raw audio data capture.                                         |
-| StartWaveformAnalysis           | (metadata: string[], resolution: number) -> void        | Starts asynchronous waveform analysis (1-1000 points/s).              |
+| StartWaveformAnalysis           | (metadata: string[], resolution: number, [downmixToMono: boolean]) -> void | Starts asynchronous waveform analysis (1-1000 points/s). Pass `true` to downmix all channels to mono internally. |
 | StopWaveformAnalysis            | () -> void                                              | Stops waveform analysis.                                              |
 | GetWaveformData                 | (trackIndex: number) -> Array                           | Returns waveform data points for the specified track (0-based index). |
 | GetWaveformTrackCount           | () -> number                                            | Returns the number of tracks loaded in waveform analysis.             |
@@ -868,19 +874,22 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - `GetPureDynamicsAlbumFull`: Use album name (string) to retrieve Pure Dynamics album metric.
 
 - **Waveform Analysis**:
-  - `StartWaveformAnalysis(metadata, resolution)`: Analyzes specific tracks using metadata array (multi-track support).
+  - `StartWaveformAnalysis(metadata, resolution, downmixToMono)`: Analyzes specific tracks using metadata array (multi-track support).
   - Set `resolution` (points per second, 1-1000) for data granularity.
+  - Set `downmixToMono` to `true` to average all channels into a single mono stream before analysis.
+    When set, `GetWaveformData(i).length` will always be `1`, and no per-script averaging is needed.
   - `GetWaveformData(trackIndex)`: Returns an array of channel arrays (one flat array per channel).
-     `waveformData.length` = number of channels (self-describing; no need to call `GetWaveformTrackChannels` separately).
+     `waveformData.length` = number of channels (`1` when downmixToMono was true).
      `waveformData[ch]` = flat array of 5 metrics per time point for that channel:
      - Offset 0: RMS (dB)
      - Offset 1: RMS Peak (dB, decaying)
      - Offset 2: Sample Peak (dB)
      - Offset 3: Min sample value (linear, -1.0 to 1.0)
      - Offset 4: Max sample value (linear, -1.0 to 1.0)
-     For stereo: `waveformData[0]` = left, `waveformData[1]` = right.
+     For stereo (default): `waveformData[0]` = left, `waveformData[1]` = right.
+     For mono output: `waveformData[0]` = averaged mono signal.
      Total time points = `waveformData[0].length / 5`.
-  - `GetWaveformTrackCount()`: Returns number of analyzed tracks – useful for looping.
+  - `GetWaveformTrackCount()`: Returns number of analyzed tracks — useful for looping.
   - `GetWaveformTrackDuration(trackIndex)` and `GetWaveformTrackPath(trackIndex)`: Retrieve track metadata for display or caching.
   - `SetFullTrackWaveformCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
 

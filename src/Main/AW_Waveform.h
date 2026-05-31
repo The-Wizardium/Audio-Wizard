@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.4.0                                                   * //
+// * Version:        0.5.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    27-12-2025                                              * //
+// * Last change:    31-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -57,6 +57,7 @@ public:
 		std::atomic<WaveformMetric> metric = Config::DEFAULT_METRIC;
 		std::atomic<bool> isAnalyzing = false;
 		std::atomic<bool> isAnalysisComplete = false;
+		std::atomic<bool> downmixToMono = false;
 		std::atomic<int> pointsPerSecond = Config::DEF_POINTS_PER_SEC;
 		std::atomic<size_t> currentTrackIndex = 0;
 		std::vector<TrackWaveform> trackWaveforms;
@@ -66,7 +67,7 @@ public:
 	~AudioWizardWaveform();
 
 	// * PUBLIC MAIN METHODS * //
-	void StartWaveformAnalysis(const metadb_handle_list& tracks, int pointsPerSecond);
+	void StartWaveformAnalysis(const metadb_handle_list& tracks, int pointsPerSecond, bool downmixToMono = false);
 	void StopWaveformAnalysis();
 
 	// * PUBLIC API METHODS * //

@@ -1,11 +1,11 @@
 /////////////////////////////////////////////////////////////////////////////////
 // * FB2K Component: COM Automation and ActiveX Interface                    * //
-// * Description:    MyCOM Source File                                       * //
-// * Author:         TT                                                      * //
-// * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.4.0                                                   * //
-// * Dev. started:   12-12-2024                                              * //
-// * Last change:    30-05-2026                                              * //
+// * Description: ï¿½ ï¿½MyCOM Source File              ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
+// * Author: ï¿½ ï¿½ ï¿½ ï¿½ TT ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
+// * Website: ï¿½ ï¿½ ï¿½ ï¿½https://github.com/The-Wizardium/Audio-Wizardï¿½ ï¿½      ï¿½ * //
+// * Version: ï¿½ ï¿½ ï¿½ ï¿½0.5.0     ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ * //
+// * Dev. started: ï¿½ 12-12-2024 ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
+// * Last change: ï¿½ ï¿½31-05-2026 ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -697,9 +697,14 @@ STDMETHODIMP MyCOM::SetFullTrackWaveformCallback(const VARIANT* callback) {
 // * MyCOM - PUBLIC API - FULL-TRACK METHODS * //
 /////////////////////////////////////////////////
 #pragma region MyCOM - Public API - Full-Track Methods
-STDMETHODIMP MyCOM::StartWaveformAnalysis(VARIANT metadata, LONG pointsPerSec) const {
+STDMETHODIMP MyCOM::StartWaveformAnalysis(VARIANT metadata, LONG pointsPerSec, VARIANT* downmixToMono) const {
 	if (!AudioWizard::Waveform()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StartWaveformAnalysis", L"AudioWizard::Waveform not available", true);
+	}
+
+	bool bDownmixToMono = false;
+	if (downmixToMono && downmixToMono->vt == VT_BOOL) {
+		bDownmixToMono = (downmixToMono->boolVal == VARIANT_TRUE);
 	}
 
 	auto resolution = static_cast<int>(pointsPerSec);
@@ -711,7 +716,7 @@ STDMETHODIMP MyCOM::StartWaveformAnalysis(VARIANT metadata, LONG pointsPerSec) c
 		playlistManager->playlist_get_selected_items(playlistIndex, metadb);
 	}
 
-	AudioWizard::Waveform()->StartWaveformAnalysis(metadb, resolution);
+	AudioWizard::Waveform()->StartWaveformAnalysis(metadb, resolution, bDownmixToMono);
 	return S_OK;
 }
 

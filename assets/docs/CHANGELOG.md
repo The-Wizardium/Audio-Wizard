@@ -42,6 +42,27 @@ weaving elegance and stability into foobar2000’s ethereal form.*
 <br>
 <br>
 
+## Version 0.5.0 - 31-05-2026
+This release introduces **Downmix to Mono** support for waveform analysis - a powerful new option that unifies all channels into a single mono stream internally.
+
+### Added
+- **Downmix to Mono**: New optional boolean parameter in `StartWaveformAnalysis(metadata, resolution, downmixToMono)`.
+  - When `true`, all source channels are averaged into one mono channel before processing.
+  - Resulting `waveformData.length` will always be `1` (mono), simplifying scripting and reducing memory usage.
+  - Saved `.awz.json` files will correctly reflect `channels: 1`.
+- Updated API documentation and examples.
+
+### Changed
+- Internal waveform processing now cleanly handles both multi-channel and downmixed mono paths.
+- Optimized for effective channel count (1 or original).
+
+### Improved
+- Clarity and ease of use for developers who prefer mono waveform data.
+- Documentation for the new feature across API reference.
+
+<br>
+<br>
+
 ## Version 0.4.0 - 30-05-2026
 This release refines the waveform system with a cleaner data structure and fixes critical issues with lossy audio formats.
 

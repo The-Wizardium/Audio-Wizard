@@ -3,9 +3,9 @@
 // * Description:    MyCOM Type Library File                                 * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.4.0                                                   * //
+// * Version:        0.5.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    30-05-2026                                              * //
+// * Last change:    31-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -58,7 +58,7 @@ interface MyCOMAPI : IDispatch {
 	HRESULT SetFullTrackWaveformCallback([in] VARIANT* callback);
 
 	// * PUBLIC API - FULL-TRACK METHODS * //
-	HRESULT StartWaveformAnalysis([in] VARIANT metadata, [in] LONG resolutionSec);
+	HRESULT StartWaveformAnalysis([in] VARIANT metadata, [in] LONG resolutionSec, [in, optional] VARIANT* downmixToMono);
 	HRESULT StopWaveformAnalysis();
 	HRESULT GetWaveformData([in] LONG trackIndex, [out, retval] VARIANT* data);
 	HRESULT GetWaveformTrackChannels([in] LONG trackIndex, [out, retval] LONG* channels);

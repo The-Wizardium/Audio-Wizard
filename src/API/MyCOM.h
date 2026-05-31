@@ -3,9 +3,9 @@
 // * Description:    MyCOM Header File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.4.0                                                   * //
+// * Version:        0.5.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    30-05-2026                                              * //
+// * Last change:    31-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -85,7 +85,7 @@ public:
 	STDMETHOD(SetFullTrackWaveformCallback)(const VARIANT* callback);
 
 	// * PUBLIC API - FULL-TRACK METHODS * //
-	STDMETHOD(StartWaveformAnalysis)(VARIANT metadata, LONG pointsPerSec) const;
+	STDMETHOD(StartWaveformAnalysis)(VARIANT metadata, LONG pointsPerSec, VARIANT* downmixToMono) const;
 	STDMETHOD(StopWaveformAnalysis)() const;
 	STDMETHOD(GetWaveformData)(LONG trackIndex, VARIANT* data) const;
 	STDMETHOD(GetWaveformTrackChannels)(LONG trackIndex, LONG* channels) const;

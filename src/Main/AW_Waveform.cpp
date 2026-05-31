@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.4.0                                                   * //
+// * Version:        0.5.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    30-05-2026                                              * //
+// * Last change:    31-05-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -28,7 +28,7 @@ AudioWizardWaveform::~AudioWizardWaveform() = default;
 // * PUBLIC METHODS * //
 ////////////////////////
 #pragma region Public Methods
-void AudioWizardWaveform::StartWaveformAnalysis(const metadb_handle_list & tracks, int pointsPerSec) {
+void AudioWizardWaveform::StartWaveformAnalysis(const metadb_handle_list & tracks, int pointsPerSec, bool downmixToMono) {
 	if (state.isAnalyzing.load()) {
 		StopWaveformAnalysis();
 	}
@@ -41,8 +41,11 @@ void AudioWizardWaveform::StartWaveformAnalysis(const metadb_handle_list & track
 		pointsPerSec, Config::MIN_POINTS_PER_SEC, Config::MAX_POINTS_PER_SEC
 	);
 
+	state.downmixToMono.store(downmixToMono, std::memory_order_release);
+
 	AWHDebug::DebugLog("StartWaveformAnalysis: Initialized ",
-		tracks.get_count(), " tracks at ", clampedPointsPerSec, " points/sec"
+		tracks.get_count(), " tracks at ", clampedPointsPerSec, " points/sec",
+		downmixToMono ? " (downmix to mono)" : ""
 	);
 
 	for (t_size i = 0; i < tracks.get_count(); ++i) {
@@ -51,7 +54,8 @@ void AudioWizardWaveform::StartWaveformAnalysis(const metadb_handle_list & track
 		track.duration = tracks[i]->get_length();
 		track.reset();
 
-		// Pre-reserve based on expected size
+		// Pre-reserve: divide by channel count when downmixing (1 channel output)
+		const size_t effectiveChannels = 1; // always 1 here for reserve; channels set by ProcessWaveformMetrics
 		auto expectedSamples = static_cast<size_t>(
 			track.duration * clampedPointsPerSec * Config::WAVEFORM_CHUNK_ELEMENTS
 		);
@@ -216,29 +220,29 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 	}
 
 	auto& track = state.trackWaveforms[currentIndex];
+	const bool downmix = state.downmixToMono.load(std::memory_order_relaxed);
+	const unsigned effectiveChannels = downmix ? 1u : data.channels;
 
 	// 1. Track Initialization
-	if (track.channels != data.channels) {
-		track.channels = data.channels;
-		track.activeRMSPeaks.assign(data.channels, -100.0);
+	if (track.channels != effectiveChannels) {
+		track.channels = effectiveChannels;
+		track.activeRMSPeaks.assign(effectiveChannels, -100.0);
 	}
 
 	// 2. Setup Processing Constants
 	const int pointsPerSecond = state.pointsPerSecond.load(std::memory_order_relaxed);
 	const size_t safePPS = (pointsPerSecond > 0) ? static_cast<size_t>(pointsPerSecond) : 1;
-
 	const size_t framesPerResolution = std::max<size_t>(1, static_cast<size_t>(data.sampleRate / safePPS));
 	const size_t numChunks = (data.frames + framesPerResolution - 1) / framesPerResolution;
-	const size_t elementsPerChunk = data.channels * Config::WAVEFORM_CHUNK_ELEMENTS;
-
+	const size_t elementsPerChunk = effectiveChannels * Config::WAVEFORM_CHUNK_ELEMENTS;
 	const size_t outputStart = track.samples.size();
 	track.samples.resize(outputStart + numChunks * elementsPerChunk);
 
-	// 3. Hoist Allocations - Reuse vectors for every chunk
-	std::vector<double> sumSquares(data.channels);
-	std::vector<double> maxAbs(data.channels);
-	std::vector<double> minSample(data.channels);
-	std::vector<double> maxSample(data.channels);
+	// 3. Hoist Allocations — sized for effectiveChannels
+	std::vector<double> sumSquares(effectiveChannels);
+	std::vector<double> maxAbs(effectiveChannels);
+	std::vector<double> minSample(effectiveChannels);
+	std::vector<double> maxSample(effectiveChannels);
 
 	double currentTime = track.lastSampleTime;
 
@@ -259,15 +263,33 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 
 		// Process frames - sequential memory access
 		size_t dataIdx = chunkStart * data.channels;
-		for (size_t f = 0; f < chunkSize; ++f) {
-			for (size_t c = 0; c < data.channels; ++c, ++dataIdx) {
-				const double sample = data.data[dataIdx];
-				const double absSample = std::abs(sample);
-
-				sumSquares[c] += sample * sample;
-				maxAbs[c] = std::max(maxAbs[c], absSample);
-				minSample[c] = std::min(minSample[c], sample);
-				maxSample[c] = std::max(maxSample[c], sample);
+		if (downmix && data.channels > 1) {
+			// Downmix path: average all input channels into a single mono sample
+			const double invChannels = 1.0 / static_cast<double>(data.channels);
+			for (size_t f = 0; f < chunkSize; ++f) {
+				double monoSample = 0.0;
+				for (size_t c = 0; c < data.channels; ++c, ++dataIdx) {
+					monoSample += data.data[dataIdx];
+				}
+				monoSample *= invChannels;
+				const double absSample = std::abs(monoSample);
+				sumSquares[0] += monoSample * monoSample;
+				maxAbs[0] = std::max(maxAbs[0], absSample);
+				minSample[0] = std::min(minSample[0], monoSample);
+				maxSample[0] = std::max(maxSample[0], monoSample);
+			}
+		}
+		else {
+			// Original per-channel path
+			for (size_t f = 0; f < chunkSize; ++f) {
+				for (size_t c = 0; c < data.channels; ++c, ++dataIdx) {
+					const double sample = data.data[dataIdx];
+					const double absSample = std::abs(sample);
+					sumSquares[c] += sample * sample;
+					maxAbs[c] = std::max(maxAbs[c], absSample);
+					minSample[c] = std::min(minSample[c], sample);
+					maxSample[c] = std::max(maxSample[c], sample);
+				}
 			}
 		}
 
@@ -275,7 +297,7 @@ void AudioWizardWaveform::ProcessWaveformMetrics(const ChunkData& data) {
 		size_t outIdx = outputStart + chunkIdx * elementsPerChunk;
 		double chunkGlobalMax = 0.0;
 
-		for (size_t c = 0; c < data.channels; ++c) {
+		for (size_t c = 0; c < effectiveChannels; ++c) {
 			// Calculate metrics
 			const double rms = std::sqrt(sumSquares[c] * invChunkSize);
 			const double rmsDb = (rms > 0.0) ? std::clamp(AWHAudio::LinearToDb(rms), -100.0, 0.0) : -100.0;
