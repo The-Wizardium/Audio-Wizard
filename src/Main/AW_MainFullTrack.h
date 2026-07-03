@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Full-Track Header File                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -25,6 +25,28 @@ public:
 
 	// * MAIN CONFIG * //
 	struct Config {
+		static constexpr int FULL_METRICS_DATA_VERSION = 1; // NOTE: bump whenever FULL_METRICS_PER_TRACK or FULL_METRIC_NAMES changes.
+		static constexpr size_t FULL_METRICS_PER_TRACK = 12; // M LUFS, S LUFS, I LUFS, RMS, SP, TP, PSR, PLR, CF, LRA, DR, PD
+
+		struct MetricEntry {
+			std::string_view name;
+			double (*accessor)(const FullTrackData&);
+		};
+		static constexpr std::array<MetricEntry, FULL_METRICS_PER_TRACK> FULL_METRICS = {{
+			{ "M LUFS", &AudioWizardAnalysisFullTrack::GetMomentaryLUFSFull  },
+			{ "S LUFS", &AudioWizardAnalysisFullTrack::GetShortTermLUFSFull  },
+			{ "I LUFS", &AudioWizardAnalysisFullTrack::GetIntegratedLUFSFull },
+			{ "RMS",    &AudioWizardAnalysisFullTrack::GetRMSFull            },
+			{ "SP",     &AudioWizardAnalysisFullTrack::GetSamplePeakFull     },
+			{ "TP",     &AudioWizardAnalysisFullTrack::GetTruePeakFull       },
+			{ "PSR",    &AudioWizardAnalysisFullTrack::GetPSRFull            },
+			{ "PLR",    &AudioWizardAnalysisFullTrack::GetPLRFull            },
+			{ "CF",     &AudioWizardAnalysisFullTrack::GetCrestFactorFull    },
+			{ "LRA",    &AudioWizardAnalysisFullTrack::GetLoudnessRangeFull  },
+			{ "DR",     &AudioWizardAnalysisFullTrack::GetDynamicRangeFull   },
+			{ "PD",     &AudioWizardAnalysisFullTrack::GetPureDynamicsFull   }
+		}};
+
 		static constexpr int DEF_CHUNK_DURATION_MS = 200;
 		static constexpr int MIN_CHUNK_DURATION_MS = 10;
 		static constexpr int MAX_CHUNK_DURATION_MS = 1000;
@@ -69,6 +91,7 @@ public:
 	// * PUBLIC PROCESSING CONTROL * //
 	bool GetFullTrackAnalysisForDialog(const metadb_handle_list& tracks);
 	void GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics) const;
+	void GetFullTrackMetricsDataInfo(pfc::string8& json) const;
 	void SetFullTrackChunkDuration(int chunkDurationMs);
 	void StartFullTrackAnalysis(const metadb_handle_list& tracks, int chunkDurationMs);
 	void StopFullTrackAnalysis();

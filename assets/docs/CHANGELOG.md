@@ -42,6 +42,30 @@ weaving elegance and stability into foobar2000’s ethereal form.*
 <br>
 <br>
 
+## Version 0.6.0 - 03-07-2026
+This release adds self-describing schema methods so scripts no longer need to hardcode data layouts.
+
+### Added
+- `GetPhysicalFilePath(virtualPath)`: Resolves virtual/archive/CUE paths (e.g. `unpack://...` or `file://...|...`) to their real on-disk physical path.
+- `GetFullTrackMetricsDataInfo()`: Returns JSON schema for full-track metrics (`componentVersion`, `fullTrackMetricsDataVersion`, `metricsPerTrack`, `metrics[]` array).
+- `GetWaveformDataInfo([trackIndex])`: Returns JSON schema for waveform data (`componentVersion`, `waveformDataVersion`, `metricsPerChannel`, `metrics[]`, `pointsPerSecond`). When a `trackIndex` is provided, also includes that track's `channels`, `path`, and `duration`.
+- Comprehensive test demo `startDataInfoTestDemo()` to validate all new schema methods and data structures.
+
+### Changed
+- Updated API documentation throughout to emphasize querying the schema methods instead of hardcoding metric counts or names.
+- Strengthened examples and integration helpers.
+
+### Fixed
+- `GetWaveformData()` now reports a track's true channel count (including `0` for tracks that failed to decode) instead of always claiming at least 1 channel, keeping it consistent with the `channels` field returned by `GetWaveformDataInfo()`.
+
+### Improved
+- Future-proofing: Scripts can now dynamically adapt to changes in metric layouts between component versions.
+- Clarity and robustness for developers working with full-track metrics and waveform data.
+- Error handling and logging for the new info rites.
+
+<br>
+<br>
+
 ## Version 0.5.0 - 31-05-2026
 This release introduces **Downmix to Mono** support for waveform analysis - a powerful new option that unifies all channels into a single mono stream internally.
 

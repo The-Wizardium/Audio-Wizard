@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Source File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    31-05-2026                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -115,7 +115,7 @@ void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) c
 	}
 
 	const auto& track = state.trackWaveforms[trackIndex];
-	const unsigned channels = (track.channels > 0) ? track.channels : 1;
+	const unsigned channels = track.channels;
 	const size_t metricsPC = Config::WAVEFORM_CHUNK_ELEMENTS; // 5
 	const size_t step = channels * metricsPC;
 	const size_t total = track.samples.size();
@@ -154,7 +154,7 @@ void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) c
 		VariantInit(&v);
 		V_VT(&v) = VT_ARRAY | VT_R4;
 		V_ARRAY(&v) = innerArray;
-		LONG idx = static_cast<LONG>(c);
+		auto idx = static_cast<LONG>(c);
 
 		HRESULT hr = SafeArrayPutElement(outerArray, &idx, &v); // deep-copies innerArray
 		if (FAILED(hr)) {
@@ -166,6 +166,45 @@ void AudioWizardWaveform::GetWaveformData(size_t trackIndex, SAFEARRAY** data) c
 	}
 
 	*data = outerArray;
+}
+
+void AudioWizardWaveform::GetWaveformDataInfo(size_t trackIndex, bool hasTrackIndex, pfc::string8& json) const {
+	std::ostringstream oss;
+	oss << std::setprecision(17);
+
+	oss << "{"
+		<< R"("componentVersion":")" << ::AW_COMPONENT_VERSION << "\","
+		<< "\"waveformDataVersion\":" << Config::WAVEFORM_DATA_VERSION;
+
+	if (hasTrackIndex && trackIndex < state.trackWaveforms.size()) {
+		pfc::string8 path;
+		double duration = 0.0;
+		GetWaveformTrackInfo(trackIndex, path, duration);
+		const unsigned channels = GetWaveformTrackChannels(trackIndex);
+
+		oss << ",\"channels\":" << channels
+			<< R"(,"path":")" << AWHString::EscapeJsonString(path.c_str()) << "\""
+			<< ",\"duration\":" << duration;
+	}
+
+	oss << ",\"metricsPerChannel\":" << Config::WAVEFORM_CHUNK_ELEMENTS << ","
+		<< "\"metrics\":[";
+
+	for (size_t i = 0; i < Config::WAVEFORM_METRIC_NAMES.size(); ++i) {
+		if (i > 0) oss << ",";
+		oss << "\"" << Config::WAVEFORM_METRIC_NAMES[i] << "\"";
+	}
+
+	oss << "],"
+		<< "\"pointsPerSecond\":" << state.pointsPerSecond.load(std::memory_order_relaxed)
+		<< "}";
+
+	json = oss.str().c_str();
+
+	AWHDebug::DebugLog(
+		"GetWaveformDataInfo[", hasTrackIndex ? trackIndex : 0, "]: ",
+		hasTrackIndex ? "per-track" : "component", " info, ", json.get_length(), " bytes"
+	);
 }
 
 unsigned AudioWizardWaveform::GetWaveformTrackChannels(size_t trackIndex) const {

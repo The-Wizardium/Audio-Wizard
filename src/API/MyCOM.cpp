@@ -1,11 +1,11 @@
 /////////////////////////////////////////////////////////////////////////////////
 // * FB2K Component: COM Automation and ActiveX Interface                    * //
-// * Description: ï¿½ ï¿½MyCOM Source File              ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
-// * Author: ï¿½ ï¿½ ï¿½ ï¿½ TT ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
-// * Website: ï¿½ ï¿½ ï¿½ ï¿½https://github.com/The-Wizardium/Audio-Wizardï¿½ ï¿½      ï¿½ * //
-// * Version: ï¿½ ï¿½ ï¿½ ï¿½0.5.0     ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ * //
-// * Dev. started: ï¿½ 12-12-2024 ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
-// * Last change: ï¿½ ï¿½31-05-2026 ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½ ï¿½* //
+// * Description:    MyCOM Source File                                       * //
+// * Author:         TT                                                      * //
+// * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
+// * Version:        0.6.0                                                   * //
+// * Dev. started:   12-12-2024                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -720,6 +720,7 @@ STDMETHODIMP MyCOM::StartWaveformAnalysis(VARIANT metadata, LONG pointsPerSec, V
 	return S_OK;
 }
 
+
 STDMETHODIMP MyCOM::StopWaveformAnalysis() const {
 	if (!AudioWizard::Waveform()) {
 		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::StopWaveformAnalysis", L"AudioWizard::Waveform not available", true);
@@ -747,6 +748,37 @@ STDMETHODIMP MyCOM::GetWaveformData(LONG trackIndex, VARIANT* data) const {
 	V_VT(data) = VT_ARRAY | VT_VARIANT;
 	V_ARRAY(data) = outerArray;
 
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetWaveformDataInfo(VARIANT* trackIndex, BSTR* infoJson) const {
+	if (!AudioWizard::Waveform()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetWaveformDataInfo", L"AudioWizard::Waveform not available", true);
+	}
+	if (!infoJson) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetWaveformDataInfo", L"Invalid pointer", true);
+	}
+
+	bool hasTrackIndex = false;
+	LONG trackIndexValue = 0;
+
+	if (trackIndex && trackIndex->vt != VT_ERROR && trackIndex->vt != VT_EMPTY && trackIndex->vt != VT_NULL) {
+		HRESULT hr = AWHCOM::GetOptionalLong(trackIndex, trackIndexValue);
+		if (FAILED(hr)) {
+			return AWHCOM::LogError(hr, L"Audio Wizard => MyCOM::GetWaveformDataInfo", L"Invalid track index, must be a valid integer", true);
+		}
+		if (trackIndexValue < 0 || trackIndexValue >= static_cast<LONG>(AudioWizard::Waveform()->GetWaveformTrackCount())) {
+			return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetWaveformDataInfo", L"Invalid track index", true);
+		}
+		hasTrackIndex = true;
+	}
+
+	pfc::string8 json;
+	AudioWizard::Waveform()->GetWaveformDataInfo(
+		hasTrackIndex ? static_cast<size_t>(trackIndexValue) : 0, hasTrackIndex, json
+	);
+
+	*infoJson = SysAllocString(pfc::stringcvt::string_wide_from_utf8(json).get_ptr());
 	return S_OK;
 }
 
@@ -869,7 +901,7 @@ STDMETHODIMP MyCOM::GetFullTrackAnalysis(VARIANT_BOOL* pSuccess) const {
 	return S_OK;
 }
 
-STDMETHODIMP MyCOM::GetFullTrackMetrics(SAFEARRAY** metrics) {
+STDMETHODIMP MyCOM::GetFullTrackMetrics(SAFEARRAY** metrics) const {
 	if (!metrics) {
 		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetFullTrackMetrics", L"Invalid pointer", true);
 	}
@@ -878,6 +910,21 @@ STDMETHODIMP MyCOM::GetFullTrackMetrics(SAFEARRAY** metrics) {
 	}
 
 	AudioWizard::Main()->GetFullTrackMetrics(metrics);
+	return S_OK;
+}
+
+STDMETHODIMP MyCOM::GetFullTrackMetricsDataInfo(BSTR* infoJson) const {
+	if (!AudioWizard::Main()) {
+		return AWHCOM::LogError(E_UNEXPECTED, L"Audio Wizard => MyCOM::GetFullTrackMetricsDataInfo", L"AudioWizard::Main not available", true);
+	}
+	if (!infoJson) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetFullTrackMetricsDataInfo", L"Invalid pointer", true);
+	}
+
+	pfc::string8 json;
+	AudioWizard::Main()->GetFullTrackMetricsDataInfo(json);
+
+	*infoJson = SysAllocString(pfc::stringcvt::string_wide_from_utf8(json).get_ptr());
 	return S_OK;
 }
 
@@ -1221,6 +1268,30 @@ STDMETHODIMP MyCOM::StopPeakmeterMonitoring() const {
 	}
 
 	AudioWizard::Main()->StopPeakmeterMonitoring();
+	return S_OK;
+}
+#pragma endregion
+
+
+///////////////////////////////////////////
+// * MyCOM - PUBLIC API - PATH METHODS * //
+///////////////////////////////////////////
+#pragma region MyCOM - Public API - Path Methods
+STDMETHODIMP MyCOM::GetPhysicalFilePath(BSTR virtualPath, BSTR* physicalPath) const {
+	if (!virtualPath) {
+		return AWHCOM::LogError(E_INVALIDARG, L"Audio Wizard => MyCOM::GetPhysicalFilePath", L"Invalid virtual path", true);
+	}
+	if (!physicalPath) {
+		return AWHCOM::LogError(E_POINTER, L"Audio Wizard => MyCOM::GetPhysicalFilePath", L"Invalid pointer", true);
+	}
+
+	pfc::string8 utf8Path = AWHString::ToNarrow(virtualPath);
+	pfc::string8 resolved = AWHPath::GetPhysicalFilePath(utf8Path.c_str());
+
+	*physicalPath = SysAllocString(
+		pfc::stringcvt::string_wide_from_utf8(resolved).get_ptr()
+	);
+
 	return S_OK;
 }
 #pragma endregion

@@ -45,7 +45,7 @@ from its luminous loudness to the primal pulse of its dynamic soul.
 
 # Audio Wizard - API Reference
 
-*Version 0.5 - Last Updated: 31.05.2026*
+*Version 0.6 - Last Updated: 03.07.2026*
 
 Audio Wizard provides a JavaScript API for real-time audio analysis and visualization in foobar2000,
 accessible via a COM/ActiveX interface in scripting environments like
@@ -66,6 +66,69 @@ const AudioWizard = new ActiveXObject('AudioWizard');
 
 The following examples demonstrate how to use Audio Wizard for real-time monitoring, peakmeter visualization, raw audio processing,
 full-track analysis, album-level analysis, and waveform generation. Refer to the [API Reference](#api-reference) for available properties and methods.
+
+<br>
+<br>
+
+### Physical File Path Resolution
+
+Resolves the actual on-disk path for a track in a single call - plain files, tracks embedded in
+archives (`.zip`, `.7z`) or CUE sheets via foobar2000's native `<container>|<member>` notation, and
+tracks streamed through the Unpack component's `unpack://` protocol. Use this instead of writing your
+own path-parsing logic: `GetPhysicalFilePath` already knows how to unwrap every path scheme foobar2000
+and its common archive-support components use, so your script never needs to inspect `RawPath` manually
+or care whether a track lives in an archive at all.
+
+```javascript
+/**
+ * Gets the on-disk path for a track - plain file, archive/CUE member, or Unpack-streamed.
+ * @param {object} handle - The handle of the track.
+ * @returns {string} The physical file path.
+ */
+function getPhysicalFilePath(handle) {
+	if (!AudioWizard) return handle.Path;
+	return AudioWizard.GetPhysicalFilePath(handle.RawPath);
+}
+
+// No longer needed - superseded by AudioWizard.GetPhysicalFilePath(handle.RawPath)
+
+// /**
+//  * Gets the physical file path by stripping 'unpack://' protocols.
+//  * @param {object} handle - The handle of the track.
+//  * @returns {object} The stripped physical file path.
+//  */
+// function getPhysicalFilePath(handle) {
+// 	// If it's not an archive, return the path as is
+// 	if (!handle.RawPath.includes('unpack://')) {
+// 		return handle.Path;
+// 	}
+
+// 	// Extract path after 'file://'
+// 	const filePrefix = 'file://';
+// 	const parts = handle.RawPath.split(filePrefix);
+
+// 	// Return the physical path (the first part before the internal pipe)
+// 	return (parts.length > 1) ? parts[1].split('|')[0] : handle.Path;
+// }
+```
+
+**Notes**:
+- Prefer `handle.RawPath` over `handle.Path` as input - `RawPath` always carries an explicit scheme
+  prefix so plain files and archive members aren't ambiguous.
+- Handles every path shape automatically - **no extra code needed on your side**:
+  - Plain files - a `file://` prefix (if present) is stripped down to the bare OS path; a path with
+    no recognized scheme is returned unchanged.
+  - foobar2000's native archive/CUE notation (`<container>|<member>`, e.g. tracks inside a
+    natively-supported `.zip`/`.7z`, or CUE sheet entries) - returns the container file's path.
+  - The Unpack component's streaming protocol (`unpack://<type>|<n>|file://<container>|<member>`) -
+    returns the container archive's path.
+- For any track inside an archive or CUE sheet, this returns the path to the container file itself,
+  not the virtual member path - what you want for hashing, file-system checks (`FileExists`,
+  `GetFileSize`, etc.), or handing a path to external tools that can only work with real files on disk.
+- If you've been resolving archive paths yourself with something like this, it can be retired -
+  `GetPhysicalFilePath` covers the same `unpack://` case and goes further, since it also resolves
+  native archive/CUE paths that never go through `unpack://` at all.
+- Extremely rare or nested/unrecognized schemes are returned unchanged rather than resolved, as a last resort.
 
 <br>
 <br>
@@ -259,6 +322,89 @@ function getMetadata(metadb) {
 <br>
 <br>
 
+### Full-Track Metrics Data Info (Track Metadata Helper)
+
+Lets you discover the actual `GetFullTrackMetrics()` layout instead of hardcoding it.
+
+```javascript
+/**
+ * Retrieves and parses the full-track metrics schema exposed by Audio Wizard.
+ * @global
+ * @returns {Object|null} The parsed schema object, or null if AudioWizard is unavailable or the JSON failed to parse.
+ */
+function getFullTrackMetricsDataInfo() {
+	if (!AudioWizard) return null;
+
+	try {
+		const infoJson = AudioWizard.GetFullTrackMetricsDataInfo();
+		return JSON.parse(infoJson);
+	}
+	catch (e) {
+		console.log(`Audio Wizard => Error parsing GetFullTrackMetricsDataInfo: ${e.message}`);
+		return null;
+	}
+}
+```
+
+**Notes**:
+- Returns component-level schema info: `componentVersion`, `fullTrackMetricsDataVersion`, `metricsPerTrack`, `metrics`.
+- `fullTrackMetricsDataVersion` increments whenever `metricsPerTrack`/`metrics` change - check it (or just re-read `metrics`/`metricsPerTrack` directly) instead of assuming a fixed layout across component versions.
+- `metrics[]` gives the ordered metric identifiers backing the flat array from `GetFullTrackMetrics()` - use `metrics.indexOf('PD')` etc. instead of hardcoding an index.
+
+<br>
+<br>
+
+### Full-Track Waveform Data Info (Track Metadata Helper)
+
+Lets you discover the actual data layout instead of hardcoding it.
+
+```javascript
+/**
+ * Retrieves and parses the waveform data schema exposed by Audio Wizard.
+ * @global
+ * @param {number} [trackIndex] - The optional 0-based track index for per-track info (channels, path, duration).
+ * When omitted, only component-level schema info is returned:
+ * - componentVersion
+ * - waveformDataVersion
+ * - metricsPerChannel
+ * - metrics
+ * - pointsPerSecond
+ *
+ * NOTE: pointsPerSecond is included at the component level but is NOT fixed schema -
+ * it reflects whatever resolution the most recently *started* analysis used (default until one has run).
+ * Read it right after the analysis you care about, as startWaveformAnalysis() does, not as a stand-alone
+ * "check the schema before doing anything" call.
+ * @returns {Object|null} The parsed schema object, or null if AudioWizard is unavailable or the JSON failed to parse.
+ */
+function getWaveformDataInfo(trackIndex) {
+	if (!AudioWizard) return null;
+
+	try {
+		const infoJson = trackIndex == null
+			? AudioWizard.GetWaveformDataInfo()
+			: AudioWizard.GetWaveformDataInfo(trackIndex);
+
+		return JSON.parse(infoJson);
+	}
+	catch (e) {
+		console.log(`Audio Wizard => Error parsing GetWaveformDataInfo: ${e.message}`);
+		return null;
+	}
+}
+```
+
+**Notes**:
+- Call with no argument for component-level info only (`componentVersion`, `waveformDataVersion`, `metricsPerChannel`, `metrics`, `pointsPerSecond`).
+- Call with a track index after that track's waveform analysis has actually completed (i.e. inside the
+  `SetFullTrackWaveformCallback` success callback) to also get that track's `channels`, `path`, and `duration`.
+  `GetWaveformTrackCount()` becomes non-zero as soon as `StartWaveformAnalysis` is called - that doesn't mean
+  per-track data is ready. `duration`/`path` are populated synchronously at start, but `channels` stays `0`
+  until the first chunk for that track has been decoded.
+- `waveformDataVersion` increments whenever `metricsPerChannel`/`metrics` change - check it (or just re-read `metrics`/`metricsPerChannel` directly) instead of assuming a fixed layout across component versions.
+
+<br>
+<br>
+
 ### Full-Track Analysis (Batch Retrieval)
 
 Asynchronously analyze tracks using batch metrics retrieval:
@@ -295,7 +441,15 @@ async function startFullTrackMetricsBatch(metadb, chunkDuration = 200) {
 
 					console.log("Audio Wizard => Batch metrics analysis complete!");
 
-					const metricsPerTrack = 12;
+					const fullMetricsDataInfo = getFullTrackMetricsDataInfo();
+
+					if (!fullMetricsDataInfo) {
+						console.log('Audio Wizard => Batch metrics analysis failed: could not retrieve data schema (GetFullTrackMetricsDataInfo)');
+						resolve({ success: false });
+						return;
+					}
+
+					const { metricsPerTrack, metrics: metricNames } = fullMetricsDataInfo;
 					const metrics = AudioWizard.GetFullTrackMetrics();
 
 					console.log(`Audio Wizard => Analyzed ${handleList.Count} track(s) with GetFullTrackMetrics:`);
@@ -307,22 +461,14 @@ async function startFullTrackMetricsBatch(metadb, chunkDuration = 200) {
 						const offset = i * metricsPerTrack;
 
 						console.log(`Audio Wizard => GetFullTrackMetrics => Track ${i + 1}: ${artist} - ${album} - ${title}`);
-						console.log(`  M LUFS: ${metrics[offset + 0].toFixed(2)}`);
-						console.log(`  S LUFS: ${metrics[offset + 1].toFixed(2)}`);
-						console.log(`  I LUFS: ${metrics[offset + 2].toFixed(2)}`);
-						console.log(`  RMS: ${metrics[offset + 3].toFixed(2)}`);
-						console.log(`  Sample Peak: ${metrics[offset + 4].toFixed(2)}`);
-						console.log(`  True Peak: ${metrics[offset + 5].toFixed(2)}`);
-						console.log(`  PSR: ${metrics[offset + 6].toFixed(2)}`);
-						console.log(`  PLR: ${metrics[offset + 7].toFixed(2)}`);
-						console.log(`  CF: ${metrics[offset + 8].toFixed(2)}`);
-						console.log(`  LRA: ${metrics[offset + 9].toFixed(2)}`);
-						console.log(`  DR: ${metrics[offset + 10].toFixed(2)}`);
-						console.log(`  PD: ${metrics[offset + 11].toFixed(2)}`);
+
+						for (let m = 0; m < metricsPerTrack; m++) {
+							console.log(`  ${metricNames[m]}: ${metrics[offset + m].toFixed(2)}`);
+						}
 						console.log("\n");
 					}
 
-					resolve({ success: true, metrics });
+					resolve({ success: true, metrics, fullMetricsDataInfo });
 				}
 				catch (e) {
 					console.log(`Audio Wizard => Error in batch metrics callback: ${e.message}`);
@@ -348,6 +494,7 @@ async function startFullTrackMetricsBatch(metadb, chunkDuration = 200) {
 - This method allows analyzing ANY tracks using the metadata array overload, not just selected ones.
 - Callback receives a `success` boolean parameter indicating completion status.
 - Uses `GetFullTrackMetrics()` for efficient batch retrieval of all metrics.
+- Uses `GetFullTrackMetricsDataInfo()` to discover `metricsPerTrack` and `metrics[]` instead of hardcoding the stride.
 
 <br>
 <br>
@@ -544,7 +691,11 @@ Generate waveform data:
  * @param {FbMetadbHandle|FbMetadbHandleList|null} metadb - The metadb handle(s).
  * @param {number} [resolution] - The optional resolution in points/sec from 1-1000.
  * @param {boolean} [downmixToMono] - The optional downmix of all channels are averaged to a single mono channel.
- * @returns {Promise<{success: boolean, tracks?: Array<{index: number, path: string, duration: number, channels: number, waveformData: Array}>}>}
+ * @returns {Promise<{success: boolean, tracks?: Array<{
+ *    index: number, path: string, duration: number, channels: number,
+ *    metricsPerChannel: number, metrics: string[], pointsPerSecond: number, waveformData: Array}>,
+ *    waveformDataInfo?: Object
+ * }>}
  */
 async function startWaveformAnalysis(metadb, resolution = 1, downmixToMono = false) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) {
@@ -568,23 +719,32 @@ async function startWaveformAnalysis(metadb, resolution = 1, downmixToMono = fal
 
 					const tracks = [];
 					const trackCount = AudioWizard.GetWaveformTrackCount();
+					const waveformDataInfo = getWaveformDataInfo();
 					console.log(`Audio Wizard => Processing ${trackCount} track(s)`);
+
+					if (!waveformDataInfo) {
+						console.log('Audio Wizard => Waveform analysis failed: could not retrieve data schema (GetWaveformDataInfo)');
+						resolve({ success: false });
+						return;
+					}
+
+					const { metricsPerChannel, metrics, pointsPerSecond } = waveformDataInfo;
 
 					for (let i = 0; i < trackCount; i++) {
 						const path = AudioWizard.GetWaveformTrackPath(i);
 						const duration = AudioWizard.GetWaveformTrackDuration(i);
 						const waveformData = AudioWizard.GetWaveformData(i);
 						const channels = waveformData.length;
-						const numPoints = channels > 0 ? waveformData[0].length / 5 : 0;
+						const numPoints = channels > 0 ? waveformData[0].length / metricsPerChannel : 0;
 						const durLog = duration.toFixed(2);
 						const resLog = duration > 0 ? (numPoints / duration).toFixed(1) : '0.0';
 
-						tracks.push({ index: i, path, duration, channels, waveformData });
+						tracks.push({ index: i, path, duration, channels, metricsPerChannel, metrics, pointsPerSecond, waveformData });
 						console.log(`Audio Wizard => Track ${i + 1}: ${channels}ch, ${numPoints} points over ${durLog}s, resolution: ~${resLog} pts/sec`);
 						// console.log(`Audio Wizard => Track ${i + 1}: ${waveformData.map(v => Number(v.toFixed(3))).join(',')}`);
 					}
 
-					resolve({ success: true, tracks });
+					resolve({ success: true, tracks, waveformDataInfo });
 				}
 				catch (e) {
 					AudioWizard.StopWaveformAnalysis();
@@ -615,7 +775,6 @@ async function startWaveformAnalysis(metadb, resolution = 1, downmixToMono = fal
 - When `downmixToMono = true`, all source channels are averaged to mono internally.
   `waveformData.length` will be `1`. This eliminates the need for manual per-script averaging and reduces storage by the channel count factor.
 
-
 <br>
 <br>
 
@@ -632,7 +791,7 @@ Demonstrates how to analyze multiple tracks and save the results to the local fi
  * @param {boolean} [downmixToMono] - The optional downmix of all channels are averaged to a single mono channel.
  * @param {boolean} [prettify] - The optional prettified JSON output format - increases filesize.
  */
-async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1, downmixToMono = false, prettify = false,) {
+async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1, downmixToMono = false, prettify = false) {
 	if (!AudioWizard || AudioWizard.FullTrackProcessing) return;
 
 	const handleData = metadb || plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
@@ -662,29 +821,30 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1
 		fileName = fileName.replace(regexIllegalChars, '_').substring(0, 100);
 		const fullPath = `${cachePath}\\${fileName}.awz.json`;
 		const structuredData = [];
+		const { metricsPerChannel } = track;
 
 		for (let ch = 0; ch < track.channels; ch++) {
 			const channelPoints = [];
 			const chData = track.waveformData[ch];
 
-			for (let pt = 0; pt < chData.length; pt += 5) {
-				channelPoints.push([
-					Math.round(chData[pt + 0] * 1000) / 1000, // rms
-					Math.round(chData[pt + 1] * 1000) / 1000, // rms_peak
-					Math.round(chData[pt + 2] * 1000) / 1000, // sample_peak
-					Math.round(chData[pt + 3] * 1000) / 1000, // min
-					Math.round(chData[pt + 4] * 1000) / 1000  // max
-				]);
+			for (let pt = 0; pt < chData.length; pt += metricsPerChannel) {
+				const point = new Array(metricsPerChannel);
+				for (let m = 0; m < metricsPerChannel; m++) {
+					point[m] = Math.round(chData[pt + m] * 1000) / 1000;
+				}
+				channelPoints.push(point);
 			}
 			structuredData.push(channelPoints);
 		}
 
 		const jsonObj = {
-			version: 1,
+			componentVersion: result.waveformDataInfo.componentVersion,
+			waveformDataVersion: result.waveformDataInfo.waveformDataVersion,
 			channels: track.channels,
 			duration: track.duration,
-			metricsPerChannel: 5,
-			metrics: ['rms', 'rms_peak', 'sample_peak', 'min', 'max'],
+			metricsPerChannel,
+			metrics: track.metrics,
+			pointsPerSecond: result.waveformDataInfo.pointsPerSecond,
 			data: structuredData
 		};
 
@@ -703,7 +863,7 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1
 			jsonFile = jsonFile.replace(regexMetricsField, (match) =>
 				match.replace(/\s+/g, ' ').replace(regexArraySpaceOpen, '[').replace(regexArraySpaceClose, ']'));
 
-			// 3. Collapse the innermost 5-number data arrays into single lines
+			// 3. Collapse the innermost number data arrays into single lines
 			jsonFile = jsonFile.replace(regexNumericArray, (match, contents) =>
 				`[${contents.trim().replace(/\s+/g, ' ')}]`);
 		} else {
@@ -723,12 +883,124 @@ async function startWaveformAnalysisFileSaving(metadb, cachePath, resolution = 1
 ```
 
 **Notes**:
-- `GetWaveformData` returns an array of channel arrays — `waveformData.length` equals the channel count after any downmix.
-- `waveformData[ch]` is a flat array where every 5 values represent one time point: `[RMS, RMSPeak, SamplePeak, Min, Max]`
+- `GetWaveformData` returns an array of channel arrays, `waveformData.length` equals the channel count after any downmix.
+- `waveformData[ch]` is a flat array where every metricsPerChannel values represent one time point.
+   Call GetWaveformDataInfo() to get metricsPerChannel and the ordered metrics array
 - For stereo (downmixToMono = false): `waveformData[0]` = left channel, `waveformData[1]` = right channel.
 - For mono (downmixToMono = true): `waveformData[0]` = averaged mono signal; no further averaging needed in script code.
 - The saved JSON reflects `channels: 1` when downmixToMono is true.
 - For production use, consider LZString or LZUTF8 to reduce file size by up to 90%.
+
+<br>
+<br>
+
+### Data Info Test Demo
+
+A quick manual test that exercises `GetPhysicalFilePath`, `GetFullTrackMetricsDataInfo`, and both call shapes of `GetWaveformDataInfo` against a real selection, with pass/fail checks on the shapes described in this document.
+
+```javascript
+/**
+ * A quick manual test to print Audio Wizard data structures.
+ * Run with track(s) selected: startDataInfoTestDemo();
+ * Check View > Console in foobar2000 for output.
+ */
+async function startDataInfoTestDemo() {
+	if (!AudioWizard) {
+		console.log('Audio Wizard => TEST ABORTED: AudioWizard is not available.');
+		return;
+	}
+
+	const check = (label, condition) => console.log(`***[${condition ? 'PASS' : 'FAIL'}]*** ${label}`);
+	const SEPARATOR = `\n${'-'.repeat(100)}\n`;
+
+	// * TEST 1: GetPhysicalFilePath * //
+	console.log('\n>>> TEST 1: GetPhysicalFilePath <<<');
+	const handleData = plman.GetPlaylistSelectedItems(plman.ActivePlaylist);
+	const handleList = new FbMetadbHandleList(handleData);
+	const handle = handleList.Count > 0 ? handleList.Convert()[0] : null;
+
+	if (handle) {
+		const resolved = getPhysicalFilePath(handle);
+		console.log(`handle.Path: ${handle.Path}`);
+		console.log(`handle.RawPath: ${handle.RawPath}`);
+		console.log(`Resolved: ${resolved}`);
+		check('resolved path has no leftover scheme/pipe characters', !/unpack:\/\/|file:\/\/|\|/.test(resolved));
+	} else {
+		console.log('No track selected - select one in the playlist and re-run.');
+	}
+
+	console.log(SEPARATOR);
+
+	// * TEST 2: getFullTrackMetricsDataInfo (schema only, no analysis needed) * //
+	console.log('>>> TEST 2: getFullTrackMetricsDataInfo (schema only, no analysis needed) <<<');
+	const fullInfo = getFullTrackMetricsDataInfo();
+	console.log(JSON.stringify(fullInfo, null, 2));
+
+	check('metricsPerTrack === 12', fullInfo && fullInfo.metricsPerTrack === 12);
+	check('metrics.length === metricsPerTrack', fullInfo && fullInfo.metrics && fullInfo.metrics.length === fullInfo.metricsPerTrack);
+	check("metrics uses API identifiers, e.g. 'PD' is present", !!(fullInfo && fullInfo.metrics && fullInfo.metrics.includes('PD')));
+
+	console.log(SEPARATOR);
+
+	// * TEST 3: getWaveformDataInfo() - component-level only, no analysis needed * //
+	console.log('>>> TEST 3: getWaveformDataInfo() - component-level only, no analysis needed <<<');
+	const waveInfoComponentOnly = getWaveformDataInfo();
+	console.log(JSON.stringify(waveInfoComponentOnly, null, 2));
+
+	check('metricsPerChannel === 5', waveInfoComponentOnly && waveInfoComponentOnly.metricsPerChannel === 5);
+	check('metrics.length === metricsPerChannel', waveInfoComponentOnly && waveInfoComponentOnly.metrics && waveInfoComponentOnly.metrics.length === waveInfoComponentOnly.metricsPerChannel);
+	check('no per-track fields at component level', waveInfoComponentOnly && !('channels' in waveInfoComponentOnly) && !('path' in waveInfoComponentOnly) && !('duration' in waveInfoComponentOnly));
+
+	console.log(SEPARATOR);
+
+	// * TEST 4: getWaveformDataInfo(trackIndex) - the optional-argument path * //
+	console.log('>>> TEST 4: getWaveformDataInfo(trackIndex) - the optional-argument path <<<');
+	const waveResult = await startWaveformAnalysis(null, 5);
+
+	if (!waveResult.success) {
+		console.log('Waveform analysis failed or nothing selected - select track(s) in the playlist and re-run.');
+	}
+	else {
+		for (let i = 0; i < waveResult.tracks.length; i++) {
+			const perTrackInfo = getWaveformDataInfo(i);
+			console.log(`Track ${i}:`, JSON.stringify(perTrackInfo, null, 2));
+			check(`track ${i} has channels/path/duration`, perTrackInfo && 'channels' in perTrackInfo && 'path' in perTrackInfo && 'duration' in perTrackInfo);
+			check(`track ${i} decoded (channels > 0)`, perTrackInfo && perTrackInfo.channels > 0);
+			check(`track ${i} channel count agrees between GetWaveformDataInfo and GetWaveformData`, perTrackInfo && perTrackInfo.channels === waveResult.tracks[i].channels);
+		}
+
+		console.log('=> error path: out-of-range track index <=');
+
+		try {
+			AudioWizard.GetWaveformDataInfo(waveResult.tracks.length + 5);
+			check('out-of-range index throws instead of returning', false);
+		} catch (e) {
+			check(`out-of-range index throws (caught: ${e.message})`, true);
+		}
+	}
+
+	console.log(SEPARATOR);
+
+	// * TEST 5: schema consumed live inside startFullTrackMetricsBatch * //
+	console.log('>>> TEST 5: schema consumed live inside startFullTrackMetricsBatch <<<');
+	const batchResult = await startFullTrackMetricsBatch(null, 200);
+	console.log('success:', batchResult.success);
+
+	if (batchResult.success && fullInfo) {
+		check('batch metrics length is a multiple of metricsPerTrack', batchResult.metrics.length % fullInfo.metricsPerTrack === 0);
+		console.log('Check the per-track metric lines logged above used all 12 real metric names, not hardcoded ones.');
+	}
+
+	console.log(SEPARATOR);
+	console.log('>>> ALL TESTS COMPLETE <<<\n');
+}
+```
+
+**Notes**:
+- Select one or more tracks in the playlist before running `startDataInfoTestDemo()`, then check `View` > `Console` for output.
+- TEST 2 and TEST 3 don't require any analysis to have run - they only query the static schema.
+- TEST 4 runs a real waveform analysis so it can exercise the per-track branch of `GetWaveformDataInfo(trackIndex)`.
+- If you have an archived or CUE-sheet track handy, run TEST 1 against it too - a plain file doesn't exercise the archive-unwrapping path.
 
 <br>
 <br>
@@ -820,6 +1092,8 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 
 | Name                            | Signature                                               | Description                                                           |
 |:--------------------------------|:--------------------------------------------------------|:----------------------------------------------------------------------|
+| GetPhysicalFilePath             | (virtualPath: string) -> string                         | Resolves a virtual/archive path to its physical on-disk file path.    |
+|                                 |                                                         |                                                                       |
 | StartRealTimeMonitoring         | (refreshRate: number, chunkDuration: number) -> void    | Starts real-time monitoring.                                          |
 | StopRealTimeMonitoring          | () -> void                                              | Stops real-time monitoring.                                           |
 | StartPeakmeterMonitoring        | (refreshRate: number, chunkDuration: number) -> void    | Starts peakmeter monitoring.                                          |
@@ -829,6 +1103,7 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | StartWaveformAnalysis           | (metadata: string[], resolution: number, [downmixToMono: boolean]) -> void | Starts asynchronous waveform analysis (1-1000 points/s). Pass `true` to downmix all channels to mono internally. |
 | StopWaveformAnalysis            | () -> void                                              | Stops waveform analysis.                                              |
 | GetWaveformData                 | (trackIndex: number) -> Array                           | Returns waveform data points for the specified track (0-based index). |
+| GetWaveformDataInfo             | ([trackIndex: number]) -> string (JSON)                 | Returns the waveform data schema as JSON: `componentVersion`, `waveformDataVersion`, `metricsPerChannel`, `metrics`, `pointsPerSecond`. When `trackIndex` is provided, also includes that track's `channels`, `path`, `duration`. |
 | GetWaveformTrackCount           | () -> number                                            | Returns the number of tracks loaded in waveform analysis.             |
 | GetWaveformTrackDuration        | (trackIndex: number) -> number                          | Returns the duration in seconds for the specified waveform track.     |
 | GetWaveformTrackPath            | (trackIndex: number) -> string                          | Returns the file path for the specified waveform track.               |
@@ -837,6 +1112,7 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | StopFullTrackAnalysis           | () -> void                                              | Stops full-track analysis.                                            |
 | SetFullTrackAnalysisCallback    | (callback: (success: bool) => void) -> void             | Sets the callback for analysis completion.                            |
 | GetFullTrackMetrics             | () -> Array                                             | Returns all metrics for all analyzed tracks.                          |
+| GetFullTrackMetricsDataInfo     | () -> string (JSON)                                     | Returns the full-track metrics schema as JSON: `componentVersion`, `fullTrackMetricsDataVersion`, `metricsPerTrack`, `metrics`. |
 | GetMomentaryLUFSFull            | ([index: number]) -> number                             | Returns Momentary LUFS for the specified track (default: 0).          |
 | GetShortTermLUFSFull            | ([index: number]) -> number                             | Returns Short Term LUFS for the specified track (default: 0).         |
 | GetIntegratedLUFSFull           | ([index: number]) -> number                             | Returns Integrated LUFS for the specified track (default: 0).         |
@@ -852,6 +1128,10 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
 | GetDynamicRangeAlbumFull        | (albumName: string) -> number                           | Returns Dynamic Range album metric for the specified album.           |
 | GetPureDynamicsAlbumFull        | (albumName: string) -> number                           | Returns Pure Dynamics album metric for the specified album.           |
 
+- **File Path Resolution**:
+  - `GetPhysicalFilePath(virtualPath)`: Pass `handle.RawPath`, not `handle.Path`, to disambiguate plain files from archive members.
+  Returns the container file's physical path for zip/CUE/Unpack-wrapped tracks.
+
 - **Real-Time Monitoring**:
   - `StartRealTimeMonitoring`: Set `refreshRate` (ms) and `chunkDuration` (ms) for update frequency and data granularity.
 
@@ -866,7 +1146,15 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - Metadata format: Array of strings with format `"path\u001Fsubsong"` (Unicode Information Separator One, U+001F).
   - `StopFullTrackAnalysis`: Use to abort early.
   - `SetFullTrackAnalysisCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
-  - `GetFullTrackMetrics`: Returns array of metrics (M LUFS, S LUFS, I LUFS, RMS, Sample Peak, True Peak, PSR, PLR, Crest Factor, LRA, DR, PD) per track. 12 metrics per track, indexed as: track_offset = track_index * 12.
+  - `GetFullTrackMetrics`: Returns a flat array of metrics for all analyzed tracks.
+    Call `GetFullTrackMetricsDataInfo()` once per session to get `metricsPerTrack` and `metrics[]`
+    - don't hardcode the stride or offsets, it can change between component versions (check `fullTrackMetricsDataVersion`).
+    As of structure version 1, `metricsPerTrack` is 12 and `metrics` is
+    `["M LUFS","S LUFS","I LUFS","RMS","SP","TP","PSR","PLR","CF","LRA","DR","PD"]`.
+    Indexed as: `track_offset = track_index * metricsPerTrack`, then `GetFullTrackMetrics()[track_offset + metrics.indexOf(name)]`
+    (i.e index into the data array returned by `GetFullTrackMetrics()`, not into `metrics[]` itself, which only holds the 12 name strings).
+  - `GetFullTrackMetricsDataInfo()`: Returns the data schema as JSON (`componentVersion`, `fullTrackMetricsDataVersion`, `metricsPerTrack`,
+    `metrics[]`). This is the source of truth for the `GetFullTrackMetrics` layout above.
   - `GetMomentaryLUFSFull`, `GetShortTermLUFSFull`, `GetIntegratedLUFSFull`, `GetRMSFull`, `GetSamplePeakFull`, `GetTruePeakFull`, `GetPSRFull`, `GetPLRFull`, `GetCrestFactorFull`, `GetLoudnessRangeFull`, `GetDynamicRangeFull`, `GetPureDynamicsFull`: Use track index (default: 0).
 
 - **Full-Album Analysis**:
@@ -879,17 +1167,24 @@ Refer to [Usage Examples](#usage-examples) for practical applications.
   - Set `downmixToMono` to `true` to average all channels into a single mono stream before analysis.
     When set, `GetWaveformData(i).length` will always be `1`, and no per-script averaging is needed.
   - `GetWaveformData(trackIndex)`: Returns an array of channel arrays (one flat array per channel).
-     `waveformData.length` = number of channels (`1` when downmixToMono was true).
-     `waveformData[ch]` = flat array of 5 metrics per time point for that channel:
-     - Offset 0: RMS (dB)
-     - Offset 1: RMS Peak (dB, decaying)
-     - Offset 2: Sample Peak (dB)
-     - Offset 3: Min sample value (linear, -1.0 to 1.0)
-     - Offset 4: Max sample value (linear, -1.0 to 1.0)
+    `waveformData.length` = number of channels (`1` when downmixToMono was true).
+    `waveformData[ch]` is a flat array where every `metricsPerChannel` values represent one time point, in the order given by `metrics[]`.
+    Call `GetWaveformDataInfo()` once per session to get `metricsPerChannel` and `metrics[]` - don't hardcode the layout,
+    it can change between component versions (check `waveformDataVersion`).
+    As of structure version 1, `metricsPerChannel` is 5 and `metrics` is `["rms", "rms_peak", "sample_peak", "min", "max"]`:
+     - `rms`: RMS level (dB)
+     - `rms_peak`: RMS Peak (dB, decaying)
+     - `sample_peak`: Sample Peak (dB)
+     - `min`: Min sample value (linear, -1.0 to 1.0)
+     - `max`: Max sample value (linear, -1.0 to 1.0)
      For stereo (default): `waveformData[0]` = left, `waveformData[1]` = right.
      For mono output: `waveformData[0]` = averaged mono signal.
-     Total time points = `waveformData[0].length / 5`.
-  - `GetWaveformTrackCount()`: Returns number of analyzed tracks — useful for looping.
+     Total time points = `waveformData[0].length / metricsPerChannel`.
+  - `GetWaveformDataInfo([trackIndex])`: Returns the data schema as JSON
+     (`componentVersion`, `waveformDataVersion`, `metricsPerChannel`, `metrics[]`, `pointsPerSecond`,
+     plus `channels`/`path`/`duration` when `trackIndex` is given).
+     This is the source of truth for the `GetWaveformData` layout above.
+  - `GetWaveformTrackCount()`: Returns number of analyzed tracks, useful for looping.
   - `GetWaveformTrackDuration(trackIndex)` and `GetWaveformTrackPath(trackIndex)`: Retrieve track metadata for display or caching.
   - `SetFullTrackWaveformCallback`: Provide a JavaScript function that receives a boolean `success` parameter.
 
@@ -952,7 +1247,8 @@ Common errors include:
 | Peakmeter Adjusted Right Sample Peak    | Adjusted sample peak for the right channel in dBFS, typically -5 to +5, optimized for display.             |
 | Peakmeter Offset                        | Gain offset in dB applied to peakmeter measurements, adjustable from -20 to +20.                           |
 | Raw Audio Data                          | Raw PCM audio samples for the current chunk, unitless.                                                     |
-| Waveform Data Structure                 | Each time point contains 5 metrics per channel: RMS, RMS Peak, Sample Peak, Min (linear), Max (linear).    |
+| Full Metrics Data Structure             | Flat array of `metricsPerTrack` values per track, in `metrics[]` order.                                    |
+| Waveform Data Structure                 | Per-channel flat array of `metricsPerChannel` values per time point, in `metrics[]` order.                 |
 | Waveform Resolution                     | The density of data points per second in waveform analysis, ranging from 1 to 1000.                        |
 | dBFS                                    | Decibels relative to Full Scale, a measure of amplitude relative to the maximum possible digital level.    |
 | dBTP                                    | Decibels True Peak, accounting for inter-sample peaks in digital audio.                                    |

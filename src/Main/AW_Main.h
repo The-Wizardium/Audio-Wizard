@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Header File                           * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -62,6 +62,7 @@ public:
 	// * PUBLIC API - FULL-TRACK DATA ACCESS * //
 	bool GetFullTrackAnalysis() const;
 	void GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics) const;
+	void GetFullTrackMetricsDataInfo(pfc::string8& json) const;
 	double GetMomentaryLUFSFull(LONG trackIndex = 0) const;
 	double GetShortTermLUFSFull(LONG trackIndex = 0) const;
 	double GetIntegratedLUFSFull(LONG trackIndex = 0) const;

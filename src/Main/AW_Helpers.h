@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Helpers Header File                        * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -840,6 +840,14 @@ namespace AWHMeta {
 #pragma endregion
 
 
+//////////////////////
+// * PATH HELPERS * //
+//////////////////////
+namespace AWHPath {
+	pfc::string8 GetPhysicalFilePath(const char* rawPath);
+}
+
+
 /////////////////////////////
 // * PERFORMANCE HELPERS * //
 /////////////////////////////
@@ -890,6 +898,7 @@ namespace AWHPerf {
 #pragma region String Helpers
 namespace AWHString {
 	bool EqualsIgnoreCase(const std::string& input, const char* compareValue);
+	std::string EscapeJsonString(std::string_view input);
 	std::wstring FormatSampleRate(const double& sampleRate);
 	std::string FormatDate(std::chrono::system_clock::time_point time, const char* format = "%d-%m-%Y");
 	CStringA FormatTimestampMs(double ms);

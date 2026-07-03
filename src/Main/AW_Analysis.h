@@ -3,7 +3,7 @@
 // * Description:    Audio Wizard Analysis Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
 // * Last change:    01-09-2025                                              * //
 /////////////////////////////////////////////////////////////////////////////////

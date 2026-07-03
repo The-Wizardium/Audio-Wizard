@@ -3,9 +3,9 @@
 // * Description:    MyCOM Type Library File                                 * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    31-05-2026                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -61,6 +61,7 @@ interface MyCOMAPI : IDispatch {
 	HRESULT StartWaveformAnalysis([in] VARIANT metadata, [in] LONG resolutionSec, [in, optional] VARIANT* downmixToMono);
 	HRESULT StopWaveformAnalysis();
 	HRESULT GetWaveformData([in] LONG trackIndex, [out, retval] VARIANT* data);
+	HRESULT GetWaveformDataInfo([in, optional] VARIANT* trackIndex, [out, retval] BSTR* infoJson);
 	HRESULT GetWaveformTrackChannels([in] LONG trackIndex, [out, retval] LONG* channels);
 	HRESULT GetWaveformTrackCount([out, retval] LONG* count);
 	HRESULT GetWaveformTrackDuration([in] LONG trackIndex, [out, retval] DOUBLE* duration);
@@ -68,6 +69,7 @@ interface MyCOMAPI : IDispatch {
 	HRESULT StartFullTrackAnalysis([in] VARIANT metadata, [in] LONG chunkDurationMs);
 	HRESULT GetFullTrackAnalysis([out, retval] VARIANT_BOOL* pSuccess);
 	HRESULT GetFullTrackMetrics([out, retval] SAFEARRAY(float)* metrics);
+	HRESULT GetFullTrackMetricsDataInfo([out, retval] BSTR* infoJson);
 	HRESULT GetMomentaryLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
 	HRESULT GetShortTermLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
 	HRESULT GetIntegratedLUFSFull([in, optional] VARIANT* trackIndex, [out, retval] double* value);
@@ -93,6 +95,9 @@ interface MyCOMAPI : IDispatch {
 	HRESULT StopRawAudioMonitoring();
 	HRESULT StartPeakmeterMonitoring([in] LONG refreshRateMs, [in] LONG chunkDurationMs);
 	HRESULT StopPeakmeterMonitoring();
+
+	// * PUBLIC API - PATH METHODS * //
+	HRESULT GetPhysicalFilePath([in] BSTR virtualPath, [out, retval] BSTR* physicalPath);
 };
 
 [

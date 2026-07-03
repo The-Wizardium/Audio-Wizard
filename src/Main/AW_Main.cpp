@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Source File                           * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -116,6 +116,10 @@ bool AudioWizardMain::GetFullTrackAnalysis() const {
 
 void AudioWizardMain::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics) const {
 	mainFullTrack->GetFullTrackMetrics(fullTrackMetrics);
+}
+
+void AudioWizardMain::GetFullTrackMetricsDataInfo(pfc::string8& json) const {
+	mainFullTrack->GetFullTrackMetricsDataInfo(json);
 }
 
 double AudioWizardMain::GetMomentaryLUFSFull(LONG trackIndex) const {

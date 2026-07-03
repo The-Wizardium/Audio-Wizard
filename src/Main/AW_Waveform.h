@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Waveform Header File                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    31-05-2026                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -26,8 +26,12 @@ public:
 	};
 
 	struct Config {
-		static constexpr WaveformMetric DEFAULT_METRIC = WaveformMetric::Waveform;
+		static constexpr int WAVEFORM_DATA_VERSION = 1; // NOTE: bump whenever WAVEFORM_CHUNK_ELEMENTS or WAVEFORM_METRIC_NAMES changes.
 		static constexpr size_t WAVEFORM_CHUNK_ELEMENTS = 5; // RMS, RMSPeak, SamplePeak, Min, Max
+		static constexpr std::array<std::string_view, WAVEFORM_CHUNK_ELEMENTS> WAVEFORM_METRIC_NAMES = {
+			"rms", "rms_peak", "sample_peak", "min", "max"
+		};
+		static constexpr WaveformMetric DEFAULT_METRIC = WaveformMetric::Waveform;
 		static constexpr int DEF_POINTS_PER_SEC = 20;
 		static constexpr int MIN_POINTS_PER_SEC = 1;
 		static constexpr int MAX_POINTS_PER_SEC = 1000;
@@ -73,6 +77,7 @@ public:
 	// * PUBLIC API METHODS * //
 	bool IsWaveformAnalysisComplete(double trackDurationSec) const;
 	void GetWaveformData(size_t trackIndex, SAFEARRAY** data) const;
+	void GetWaveformDataInfo(size_t trackIndex, bool hasTrackIndex, pfc::string8& json) const;
 	unsigned GetWaveformTrackChannels(size_t trackIndex) const;
 	size_t GetWaveformTrackCount() const;
 	void GetWaveformTrackInfo(size_t trackIndex, pfc::string8& path, double& duration) const;

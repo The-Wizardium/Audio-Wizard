@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Main Full-Track Source File                * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    27-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -91,8 +91,7 @@ void AudioWizardMainFullTrack::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics)
 
 	const auto& tracks = analysis.lastAnalyzedTracks;
 	const size_t numTracks = tracks.get_count();
-	const size_t metricsPerTrack = 12; // M LUFS, S LUFS, I LUFS, RMS, SP, TP, PSR, PLR, CF, LRA, DR, PD
-	std::vector<float> allMetrics(numTracks * metricsPerTrack, -INFINITY);
+	std::vector<float> allMetrics(numTracks * Config::FULL_METRICS_PER_TRACK, -INFINITY);
 
 	if (numTracks == 0) {
 		FB2K_console_formatter() << "Audio Wizard => GetFullTrackMetrics: No tracks analyzed";
@@ -115,22 +114,36 @@ void AudioWizardMainFullTrack::GetFullTrackMetrics(SAFEARRAY** fullTrackMetrics)
 
 	for (t_size i = 0; i < numTracks; ++i) {
 		const auto& data = *analysis.fullTrackData[readIndex][i];
-		size_t offset = i * metricsPerTrack;
-		allMetrics[offset + 0] = static_cast<float>(AudioWizardAnalysisFullTrack::GetMomentaryLUFSFull(data));
-		allMetrics[offset + 1] = static_cast<float>(AudioWizardAnalysisFullTrack::GetShortTermLUFSFull(data));
-		allMetrics[offset + 2] = static_cast<float>(AudioWizardAnalysisFullTrack::GetIntegratedLUFSFull(data));
-		allMetrics[offset + 3] = static_cast<float>(AudioWizardAnalysisFullTrack::GetRMSFull(data));
-		allMetrics[offset + 4] = static_cast<float>(AudioWizardAnalysisFullTrack::GetSamplePeakFull(data));
-		allMetrics[offset + 5] = static_cast<float>(AudioWizardAnalysisFullTrack::GetTruePeakFull(data));
-		allMetrics[offset + 6] = static_cast<float>(AudioWizardAnalysisFullTrack::GetPSRFull(data));
-		allMetrics[offset + 7] = static_cast<float>(AudioWizardAnalysisFullTrack::GetPLRFull(data));
-		allMetrics[offset + 8] = static_cast<float>(AudioWizardAnalysisFullTrack::GetCrestFactorFull(data));
-		allMetrics[offset + 9] = static_cast<float>(AudioWizardAnalysisFullTrack::GetLoudnessRangeFull(data));
-		allMetrics[offset + 10] = static_cast<float>(AudioWizardAnalysisFullTrack::GetDynamicRangeFull(data));
-		allMetrics[offset + 11] = static_cast<float>(AudioWizardAnalysisFullTrack::GetPureDynamicsFull(data));
+		const size_t offset = i * Config::FULL_METRICS_PER_TRACK;
+
+		for (size_t m = 0; m < Config::FULL_METRICS_PER_TRACK; ++m) {
+			allMetrics[offset + m] = static_cast<float>(Config::FULL_METRICS[m].accessor(data));
+		}
 	}
 
 	*fullTrackMetrics = AWHCOM::CreateSafeArrayFromData(allMetrics.begin(), allMetrics.end(), "GetFullTrackMetrics");
+}
+
+void AudioWizardMainFullTrack::GetFullTrackMetricsDataInfo(pfc::string8& json) const {
+	std::ostringstream oss;
+
+	oss << "{"
+		<< R"("componentVersion":")" << ::AW_COMPONENT_VERSION << "\","
+		<< "\"fullTrackMetricsDataVersion\":" << Config::FULL_METRICS_DATA_VERSION
+		<< ",\"metricsPerTrack\":" << Config::FULL_METRICS_PER_TRACK << ","
+		<< "\"metrics\":[";
+
+	for (size_t i = 0; i < Config::FULL_METRICS.size(); ++i) {
+		if (i > 0) oss << ",";
+		oss << "\"" << Config::FULL_METRICS[i].name << "\"";
+	}
+
+	oss << "]"
+		<< "}";
+
+	json = oss.str().c_str();
+
+	AWHDebug::DebugLog("GetFullTrackMetricsDataInfo: component info, ", json.get_length(), " bytes");
 }
 
 void AudioWizardMainFullTrack::SetFullTrackChunkDuration(int chunkDurationMs) {
@@ -182,6 +195,11 @@ void AudioWizardMainFullTrack::StartFullTrackAnalysis(const metadb_handle_list& 
 		}
 		catch (const std::exception& e) {
 			FB2K_console_formatter() << "Audio Wizard => Full-track multi-track analysis failed: " << e.what();
+			monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
+			success = false;
+		}
+		catch (...) {
+			FB2K_console_formatter() << "Audio Wizard => Full-track multi-track analysis failed: unknown exception";
 			monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
 			success = false;
 		}
@@ -269,6 +287,10 @@ void AudioWizardMainFullTrack::StartFullTrackWaveform(const metadb_handle_list& 
 		}
 		catch (const std::exception& e) {
 			FB2K_console_formatter() << "Audio Wizard => Waveform batch failed: " << e.what();
+			success = false;
+		}
+		catch (...) {
+			FB2K_console_formatter() << "Audio Wizard => Waveform batch failed: unknown exception";
 			success = false;
 		}
 		fetcher.isFullTrackFetching.store(false, std::memory_order_release);
@@ -447,6 +469,11 @@ void AudioWizardMainFullTrack::FullTrackAudioProcessor(const metadb_handle_ptr& 
 			}
 			catch (const std::exception& e) {
 				FB2K_console_formatter() << "Audio Wizard => Full-track real-time analysis failed: " << e.what();
+				monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
+				success = false;
+			}
+			catch (...) {
+				FB2K_console_formatter() << "Audio Wizard => Full-track real-time analysis failed: unknown exception";
 				monitor.isFullTrackMetricsComplete.store(false, std::memory_order_release);
 				success = false;
 			}

@@ -3,9 +3,9 @@
 // * Description:    Audio Wizard Helpers Source File                        * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    23-12-2025                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -2265,7 +2265,7 @@ namespace AWHCOM {
 
 		logMessage << pfc::stringcvt::string_utf8_from_wide(source.c_str())
 			<< ": " << pfc::stringcvt::string_utf8_from_wide(description.c_str())
-			<< ", HRESULT: 0x" << pfc::format_hex(errorCode);
+			<< ", HRESULT: 0x" << pfc::format_hex(static_cast<uint32_t>(errorCode), 8);
 
 		FB2K_console_formatter() << logMessage;
 
@@ -2341,11 +2341,13 @@ namespace AWHCOM {
 		metadb_handle_list tracks;
 
 		if (metadata.vt != (VT_ARRAY | VT_BSTR) && metadata.vt != (VT_ARRAY | VT_VARIANT)) {
+			FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: unexpected VARTYPE 0x" << pfc::format_hex(metadata.vt);
 			return tracks;
 		}
 
 		SAFEARRAY* tracksArray = metadata.parray;
 		if (!tracksArray) {
+			FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: null SAFEARRAY";
 			return tracks;
 		}
 
@@ -2353,34 +2355,51 @@ namespace AWHCOM {
 		long ubound;
 		if (FAILED(SafeArrayGetLBound(tracksArray, 1, &lbound)) ||
 			FAILED(SafeArrayGetUBound(tracksArray, 1, &ubound))) {
+			FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: failed to get array bounds";
 			return tracks;
 		}
 
 		long trackCount = ubound - lbound + 1;
 		if (trackCount <= 0) {
+			FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: trackCount=" << trackCount;
 			return tracks;
 		}
 
 		bool isVariant = (metadata.vt == (VT_ARRAY | VT_VARIANT));
 
 		auto addTrackFromBstr = [&](BSTR bstr) {
-			if (!bstr) return;
+			if (!bstr) {
+				FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: null BSTR element";
+				return;
+			}
 
 			pfc::string8 trackInfo(pfc::stringcvt::string_utf8_from_utf16(
 				reinterpret_cast<const char16_t*>(bstr), SysStringLen(bstr)));
 
+			AWHDebug::DebugLog("GetMetadbHandlesFromStringArray: raw=\"", trackInfo, "\" (", SysStringLen(bstr), " UTF-16 units)");
+
 			t_size separatorPos = pfc::string_find_first(trackInfo, '\x1F', 0);
-			if (separatorPos == pfc::infinite_size) return;
+			if (separatorPos == pfc::infinite_size) {
+				FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: no \\x1F separator in \"" << trackInfo << "\", skipping";
+				return;
+			}
 
 			pfc::string8 path = trackInfo.subString(0, separatorPos);
 			pfc::string8 subsongStr = trackInfo.subString(separatorPos + 1);
 			auto subsong = pfc::atoui_ex(subsongStr, pfc::infinite_size);
 
+			AWHDebug::DebugLog("GetMetadbHandlesFromStringArray: parsed path=\"", path, "\" subsongStr=\"", subsongStr, "\" subsong=", subsong);
+
 			metadb_handle_ptr handle;
 			static_api_ptr_t<metadb> metadbApi;
 			metadbApi->handle_create(handle, make_playable_location(path, subsong));
+
 			if (handle.is_valid()) {
 				tracks.add_item(handle);
+				AWHDebug::DebugLog("GetMetadbHandlesFromStringArray: handle_create OK, echo path=\"", handle->get_path(), "\" subsong=", handle->get_subsong_index());
+			}
+			else {
+				FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: handle_create FAILED for path=\"" << path << "\" subsong=" << subsong;
 			}
 		};
 
@@ -2393,6 +2412,9 @@ namespace AWHCOM {
 					addTrackFromBstr(bstr);
 					SysFreeString(bstr);
 				}
+				else {
+					FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: SafeArrayGetElement (BSTR) failed at index " << i;
+				}
 			}
 			else {
 				VARIANT varTrack;
@@ -2401,10 +2423,18 @@ namespace AWHCOM {
 					if (varTrack.vt == VT_BSTR && varTrack.bstrVal) {
 						addTrackFromBstr(varTrack.bstrVal);
 					}
+					else {
+						FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: element " << i << " unexpected inner vt=0x" << pfc::format_hex(varTrack.vt);
+					}
+				}
+				else {
+					FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: SafeArrayGetElement (VARIANT) failed at index " << i;
 				}
 				VariantClear(&varTrack);
 			}
 		}
+
+		FB2K_console_formatter() << "Audio Wizard => GetMetadbHandlesFromStringArray: parsed " << tracks.get_count() << "/" << trackCount << " track(s)";
 
 		return tracks;
 	}
@@ -3242,6 +3272,56 @@ namespace AWHMeta {
 #pragma endregion
 
 
+//////////////////////
+// * PATH HELPERS * //
+//////////////////////
+#pragma region Path Helpers
+namespace AWHPath {
+	/**
+	 * Resolves the physical, directly openable on-disk path for a metadb/component
+	 * "virtual" path, unwrapping known container/archive path schemes:
+	 * - "file://<path>" - plain files
+	 * - "<container>|<member-or-subindex>" - foobar2000's native archive/CUE notation
+	 * - "unpack://<type>|<n>|file://<container>|<member>" - the Unpack component's streaming protocol
+	 * Unknown/unrecognized schemes (e.g. nested unpack) are returned unchanged.
+	 * @param rawPath - The raw path. Prefer RawPath over Path as input, since RawPath
+	 * always carries an explicit scheme prefix and disambiguates plain files from archives.
+	 * @return The resolved physical path, or the input path unchanged if unrecognized.
+	 */
+	pfc::string8 GetPhysicalFilePath(const char* rawPath) {
+		pfc::string8 result;
+		if (!rawPath) return result;
+
+		std::string_view path(rawPath);
+		constexpr std::string_view unpackPrefix = "unpack://";
+		constexpr std::string_view filePrefix = "file://";
+
+		if (path.substr(0, unpackPrefix.size()) == unpackPrefix) {
+			auto filePos = path.find(filePrefix);
+			if (filePos == std::string_view::npos) {
+				result.set_string(rawPath); // Unrecognized layout (e.g. nested unpack)
+				return result;
+			}
+			path = path.substr(filePos + filePrefix.size()); // now: <container>|<member>...
+		}
+		else if (path.substr(0, filePrefix.size()) == filePrefix) {
+			path = path.substr(filePrefix.size()); // strip "file://" -> plain path
+		}
+
+		// Remaining path is either a plain physical path, or "<container>|<member...>".
+		// The container segment is always the real on-disk file.
+		auto pipePos = path.find('|');
+		if (pipePos != std::string_view::npos) {
+			path = path.substr(0, pipePos);
+		}
+
+		result.set_string(path.data(), static_cast<t_size>(path.size()));
+		return result;
+	}
+}
+#pragma endregion
+
+
 /////////////////////////////
 // * PERFORMANCE HELPERS * //
 /////////////////////////////
@@ -3501,6 +3581,36 @@ namespace AWHPerf {
 namespace AWHString {
 	bool EqualsIgnoreCase(const std::string& input, const char* compareValue) {
 		return pfc::string8(input.c_str()).toLower() == compareValue;
+	}
+
+	std::string EscapeJsonString(std::string_view input) {
+		std::string out;
+		out.reserve(input.size() + 8);
+
+		for (const char c : input) {
+			switch (c) {
+				case '\"': out += R"(\")"; break;
+				case '\\': out += R"(\\)"; break;
+				case '\b': out += "\\b"; break;
+				case '\f': out += "\\f"; break;
+				case '\n': out += "\\n"; break;
+				case '\r': out += "\\r"; break;
+				case '\t': out += "\\t"; break;
+
+				default: {
+					if (static_cast<unsigned char>(c) < 0x20) {
+						char buffer[8];
+						std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(c));
+						out += buffer;
+					}
+					else {
+						out += c;
+					}
+				}
+			}
+		}
+
+		return out;
 	}
 
 	std::string FormatDate(std::chrono::system_clock::time_point time, const char* format) {

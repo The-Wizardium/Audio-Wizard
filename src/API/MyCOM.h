@@ -3,9 +3,9 @@
 // * Description:    MyCOM Header File                                       * //
 // * Author:         TT                                                      * //
 // * Website:        https://github.com/The-Wizardium/Audio-Wizard           * //
-// * Version:        0.5.0                                                   * //
+// * Version:        0.6.0                                                   * //
 // * Dev. started:   12-12-2024                                              * //
-// * Last change:    31-05-2026                                              * //
+// * Last change:    03-07-2026                                              * //
 /////////////////////////////////////////////////////////////////////////////////
 
 
@@ -88,13 +88,15 @@ public:
 	STDMETHOD(StartWaveformAnalysis)(VARIANT metadata, LONG pointsPerSec, VARIANT* downmixToMono) const;
 	STDMETHOD(StopWaveformAnalysis)() const;
 	STDMETHOD(GetWaveformData)(LONG trackIndex, VARIANT* data) const;
+	STDMETHOD(GetWaveformDataInfo)(VARIANT* trackIndex, BSTR* infoJson) const;
 	STDMETHOD(GetWaveformTrackChannels)(LONG trackIndex, LONG* channels) const;
 	STDMETHOD(GetWaveformTrackCount)(LONG* count) const;
 	STDMETHOD(GetWaveformTrackDuration)(LONG trackIndex, DOUBLE* duration) const;
 	STDMETHOD(GetWaveformTrackPath)(LONG trackIndex, BSTR* path) const;
 	STDMETHOD(StartFullTrackAnalysis)(VARIANT metadata, LONG chunkDurationMs) const;
 	STDMETHOD(GetFullTrackAnalysis)(VARIANT_BOOL* pSuccess) const;
-	STDMETHOD(GetFullTrackMetrics)(SAFEARRAY** metrics);
+	STDMETHOD(GetFullTrackMetrics)(SAFEARRAY** metrics) const;
+	STDMETHOD(GetFullTrackMetricsDataInfo)(BSTR* infoJson) const;
 	STDMETHOD(GetMomentaryLUFSFull)(VARIANT* trackIndex, double* value) const;
 	STDMETHOD(GetShortTermLUFSFull)(VARIANT* trackIndex, double* value) const;
 	STDMETHOD(GetIntegratedLUFSFull)(VARIANT* trackIndex, double* value) const;
@@ -120,6 +122,9 @@ public:
 	STDMETHOD(StopRawAudioMonitoring)() const;
 	STDMETHOD(StartPeakmeterMonitoring)(LONG refreshRateMs, LONG chunkDurationMs) const;
 	STDMETHOD(StopPeakmeterMonitoring)() const;
+
+	// * PUBLIC API - PATH METHODS * //
+	STDMETHOD(GetPhysicalFilePath)(BSTR virtualPath, BSTR* physicalPath) const;
 
 private:
 	LONG refCount = 0;
